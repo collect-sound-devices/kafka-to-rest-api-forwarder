@@ -1,0 +1,144 @@
+name: Build and save artifacts
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'Release-*'
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}  # Output the VERSION variable
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+  
+    - name: Unshallow repository
+      run: git fetch --prune --unshallow
+
+    - name: Get version from Git tags
+      shell: pwsh
+      id: get_version
+      run: |
+        # Get the latest Release tag
+        $LATEST_TAG = git describe --tags --match "Release-*" --abbrev=0
+        if (-not $LATEST_TAG) {
+            Write-Output "No Release tag found. Using default version."
+            "VERSION=1.0.0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+        }
+        Write-Output "LATEST_TAG: $LATEST_TAG"
+
+        # Extract version number from the tag (e.g., Release-1.0.1 -> 1.0.1)
+        $VERSIONNUMBER = $LATEST_TAG -replace '^Release-', ''
+        Write-Output "VERSIONNUMBER: $VERSIONNUMBER"
+
+        # Get the distance since the latest tag
+        $DISTANCE = git rev-list --count "$LATEST_TAG..HEAD"
+        Write-Output "DISTANCE: $DISTANCE"
+
+        # Append -SP<distance> if distance is greater than 0
+        if ($DISTANCE -gt 0) {
+            # Increment the patch number for a prerelease build
+            $VERSIONPARTS = $VERSIONNUMBER -split '\.'
+            $VERSIONPARTS[2] = [int]$VERSIONPARTS[2] + 1
+            $VERSIONNUMBER = $VERSIONPARTS -join '.'
+            Write-Output "VERSION CORRECTED, versionNumber: $VERSIONNUMBER"
+
+            $VERSION = "$VERSIONNUMBER-rc.$DISTANCE"
+        } else {
+            $VERSION = $VERSIONNUMBER
+        }
+
+        $VERSION = 'v' + $VERSION
+        Write-Output "Derived development version: $VERSION (base tag: $LATEST_TAG)"
+        # Output the version
+        "VERSION=$VERSION" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        Write-Output "Using version: $VERSION"    
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1
+
+    - name: Build with MSBuild
+      run: |
+        msbuild /p:Configuration=Release /target:Rebuild -restore
+        # The publishing is not necessary anymore, because distributed via Docker
+        # dotnet publish "Projects/RmqToRestApiForwarder/RmqToRestApiForwarder.csproj" -c Release -p:PublishProfile=WinX64 -v:detailed
+
+    - name: Upload entire artifacts directory
+      # Release notes and compose are placed to the artifacts directory, we need it.
+      uses: actions/upload-artifact@v4
+      with:
+        name: Artifacts
+        path: artifacts\
+
+  dockerhub:
+    if: github.ref != 'refs/pull/develop'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          submodules: true
+  
+      - name: Unshallow repository
+        run: git fetch --prune --unshallow
+
+      - name: Build image with Docker
+        run: |
+          docker build -t rmq-to-rest-api-forwarder:latest -f Projects/RmqToRestApiForwarder/Dockerfile .
+
+      - name: Login to Docker Hub
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_HUB_USER }}
+          DOCKER_PASS: ${{ secrets.DOCKER_HUB_PASSWORD }}
+        run: |
+          echo "$DOCKER_PASS" | docker login docker.io -u "$DOCKER_USER" --password-stdin
+
+      - name: Tag image for Docker Hub
+        env:
+          VERS: ${{ needs.build.outputs.version }}
+          DOCKER_USER: ${{ secrets.DOCKER_HUB_USER }}
+        run: |
+          docker tag rmq-to-rest-api-forwarder:latest docker.io/${DOCKER_USER}/rmq-to-rest-api-forwarder:${VERS}
+
+      - name: Push image to Docker Hub
+        env:
+          VERS: ${{ needs.build.outputs.version }}
+          DOCKER_USER: ${{ secrets.DOCKER_HUB_USER }}
+        run: |
+          docker push docker.io/${DOCKER_USER}/rmq-to-rest-api-forwarder:${VERS}
+
+  publish:
+    if: github.ref != 'refs/pull/develop'
+    needs: [build, dockerhub]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Artifacts
+          path: build
+
+      - name: Create Release
+        run: |
+          VERS=${{ needs.build.outputs.version }}
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+          gh release create "$VERS" --title "RmqToRestApiForwarder $VERS" --notes "Release of RambbitMQ To REST API Forwarder $VERS"
+          gh release upload "$VERS" build/*.***

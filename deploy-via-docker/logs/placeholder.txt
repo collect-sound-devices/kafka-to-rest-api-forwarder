@@ -1,0 +1,1 @@
+This file is a placeholder to ensure the 'logs' directory is tracked by version control systems like Git, which do not track empty directories.

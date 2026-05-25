@@ -1,0 +1,53 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11217.181
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{F91E0676-3871-489C-9444-F8979C0B6D46}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		.gitignore = .gitignore
+		.github\workflows\build.yml = .github\workflows\build.yml
+		qodana.yaml = qodana.yaml
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KafkaToRestApiForwarder", "Projects\KafkaToRestApiForwarder\KafkaToRestApiForwarder.csproj", "{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Documents", "Documents", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+	ProjectSection(SolutionItems) = preProject
+		LICENSE = LICENSE
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docker", "Docker", "{5B18478E-73DC-4782-9250-B32908625D1C}"
+	ProjectSection(SolutionItems) = preProject
+		.dockerignore = .dockerignore
+		Projects\KafkaToRestApiForwarder\Dockerfile = Projects\KafkaToRestApiForwarder\Dockerfile
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Deploy", "Deploy", "{3DADC45F-674E-4AA5-AB7D-F1F69AB72C28}"
+	ProjectSection(SolutionItems) = preProject
+		deploy-via-docker\docker-compose.yml = deploy-via-docker\docker-compose.yml
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Debug|x64.Build.0 = Debug|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Release|x64.ActiveCfg = Release|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Release|x64.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{3DADC45F-674E-4AA5-AB7D-F1F69AB72C28} = {5B18478E-73DC-4782-9250-B32908625D1C}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C671421F-7380-4959-B337-7B33904234CC}
+	EndGlobalSection
+EndGlobal

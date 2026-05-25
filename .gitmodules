@@ -1,0 +1,4 @@
+[submodule "msbuildLib"]
+	path = msbuildLib
+	url = https://github.com/eduarddanziger/msbuildLib.git
+	branch = main

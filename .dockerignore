@@ -1,0 +1,25 @@
+# Don't iIgnore Git files, they need to generate version
+# .git
+# .gitignore
+
+# Build outputs
+bin/
+obj/
+**/bin/
+**/obj/
+
+# IDE and tooling
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Docker
+**/.dockerignore
+**/Dockerfile.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+**/GenerateCertificate.ps1
