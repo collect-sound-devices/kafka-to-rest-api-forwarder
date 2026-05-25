@@ -33,16 +33,16 @@ services:
     depends_on:
       - kafka
 
-  forwarder:
-    image: danzigereduard/kafka-to-rest-api-forwarder:$version$
-    restart: unless-stopped
-    environment:
-      DOTNET_ENVIRONMENT: Docker
-      Kafka__BootstrapServers: kafka:9092
-      Kafka__ConsumerGroupId: audio-device-api-forwarder
-      Kafka__Topic: audio-device-events
-    depends_on:
-      - kafka
-    volumes:
-      - ./logs:/app/logs
-      
+#   forwarder:
+#   image: danzigereduard/kafka-to-rest-api-forwarder:$version$
+#   restart: unless-stopped
+#   environment:
+#     DOTNET_ENVIRONMENT: Docker
+#     Kafka__BootstrapServers: kafka:9092
+#     Kafka__ConsumerGroupId: audio-device-api-forwarder
+#     Kafka__Topic: audio-device-events
+#   depends_on:
+#     - kafka
+#   volumes:
+#     - ./logs:/app/logs
+                
