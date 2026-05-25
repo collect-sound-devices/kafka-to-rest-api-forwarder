@@ -27,7 +27,6 @@
           <DeployComposeTargetPathName>$(ArtifactsDirectory)$(DeployComposeFileName)</DeployComposeTargetPathName>
           <BuildDate>$([System.DateTime]::UtcNow.ToString('dd.MM.yyyy'))</BuildDate>
         </PropertyGroup>
-        <Copy SourceFiles="$(BaseDirectory)$(ReleaseNotesFileName)" DestinationFolder="$(ArtifactsDirectory)" />
         <Copy SourceFiles="$(BaseDirectory)$(DeployComposeSourceSubDir)$(DeployComposeFileName)" DestinationFolder="$(ArtifactsDirectory)" />
     </Target>
 </Project>
