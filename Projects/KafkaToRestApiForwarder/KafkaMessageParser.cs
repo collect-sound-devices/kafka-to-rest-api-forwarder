@@ -1,22 +1,28 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using static KafkaToRestApiForwarder.Contracts.MessageFields;
 
 namespace KafkaToRestApiForwarder;
 
-public sealed class KafkaMessageParser
+[SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging")]
+public sealed class KafkaMessageParser(ILogger<KafkaMessageParser> logger)
 {
     public ForwardingMessage Parse(string body)
     {
         var payload = JsonNode.Parse(body)?.AsObject()
             ?? throw new JsonException("Kafka message payload must be a JSON object.");
 
+        var deviceEventType = GetDeviceEventType(payload);
+        var updateDate = GetUpdateDate(payload);
+        logger.LogInformation("Parsed Kafka event payload of tyoe: {DeviceEventType}, generated at: {UpdateDate}.", deviceEventType, updateDate);
+
         return new ForwardingMessage(
             body,
             payload[HttpRequest]?.GetValue<string>(),
             payload[UrlSuffix]?.GetValue<string>(),
-            GetDeviceEventType(payload),
-            GetUpdateDate(payload),
+            deviceEventType,
+            updateDate,
             payload);
     }
 
