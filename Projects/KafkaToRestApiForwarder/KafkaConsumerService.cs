@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Confluent.Kafka;
@@ -10,35 +9,23 @@ namespace KafkaToRestApiForwarder;
 
 public class KafkaConsumerService : BackgroundService
 {
-    private static readonly string[] _validTargets =
-    [
-        nameof(ApiBaseUrlSettings.Azure), nameof(ApiBaseUrlSettings.Local), nameof(ApiBaseUrlSettings.Codespace)
-    ];
-
-    private static readonly string _validTargetsAsString = string.Join(
-        ", ",
-        Array.ConvertAll(_validTargets, v => $"\"{v}\""));
-
-    private readonly string _apiEndpoint;
-    private readonly string _apiTarget;
     private readonly AutoOffsetReset _autoOffsetReset;
     private readonly string _bootstrapServers;
-    private readonly GitHubCodespaceAwaker _codespaceAwaker;
     private readonly string _consumerGroupId;
     private readonly string _deadLetterTopic;
     private readonly TimeSpan _idleLogInterval;
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<KafkaConsumerService> _logger;
+    private readonly KafkaMessageParser _messageParser;
     private readonly int _maxRetryAttempts;
+    private readonly IRestApiForwarder _restApiForwarder;
     private readonly TimeSpan _retryDelay;
     private readonly string _topic;
 
     public KafkaConsumerService(
         IOptions<KafkaConsumerSettings> kafkaConsumerSettings,
         IOptions<KafkaMessageDeliverySettings> kafkaMessageDeliverySettings,
-        IOptions<ApiBaseUrlSettings> apiSettings,
-        GitHubCodespaceAwaker codespaceAwaker,
-        IHttpClientFactory httpClientFactory,
+        KafkaMessageParser messageParser,
+        IRestApiForwarder restApiForwarder,
         ILogger<KafkaConsumerService> logger)
     {
         var consumerSettings = kafkaConsumerSettings.Value;
@@ -56,31 +43,13 @@ public class KafkaConsumerService : BackgroundService
         _maxRetryAttempts = Math.Max(1, deliverySettings.MaxRetryAttempts);
         _retryDelay = TimeSpan.FromSeconds(Math.Max(0, deliverySettings.RetryDelayInSeconds));
 
-        _codespaceAwaker = codespaceAwaker;
-        _httpClientFactory = httpClientFactory;
+        _messageParser = messageParser;
+        _restApiForwarder = restApiForwarder;
         _logger = logger;
 
-        _apiTarget = apiSettings.Value.Target;
-        if (Array.IndexOf(_validTargets, _apiTarget) < 0)
-        {
-            _logger.LogWarning(
-                "Service initializing: Unknown Target REST API \"{ApiTarget}\". The possible values are {PossibleTargets}. Setting it to default value \"{Default}\"",
-                _apiTarget, _validTargetsAsString, nameof(ApiBaseUrlSettings.Azure));
-
-            _apiTarget = nameof(ApiBaseUrlSettings.Azure);
-        }
-
-        _apiEndpoint = _apiTarget switch
-        {
-            nameof(ApiBaseUrlSettings.Azure) => apiSettings.Value.Azure,
-            nameof(ApiBaseUrlSettings.Codespace) => apiSettings.Value.Codespace,
-            nameof(ApiBaseUrlSettings.Local) => apiSettings.Value.Local,
-            _ => apiSettings.Value.Azure
-        };
-
         _logger.LogInformation(
-            "Consumer service parameters initialized: BootstrapServers \"{BootstrapServers}\" Topic \"{Topic}\" ConsumerGroupId \"{ConsumerGroupId}\" DeadLetterTopic \"{DeadLetterTopic}\" Target REST API \"{ApiTarget}\" MaxRetryAttempts {MaxAttempts} RetryDelaySeconds {RetryDelay}",
-            _bootstrapServers, _topic, _consumerGroupId, _deadLetterTopic, _apiTarget, _maxRetryAttempts,
+            "Consumer service parameters initialized: BootstrapServers \"{BootstrapServers}\" Topic \"{Topic}\" ConsumerGroupId \"{ConsumerGroupId}\" DeadLetterTopic \"{DeadLetterTopic}\" MaxRetryAttempts {MaxAttempts} RetryDelaySeconds {RetryDelay}",
+            _bootstrapServers, _topic, _consumerGroupId, _deadLetterTopic, _maxRetryAttempts,
             _retryDelay.TotalSeconds);
     }
 
@@ -204,10 +173,10 @@ public class KafkaConsumerService : BackgroundService
         ConsumeResult<string, string> consumeResult,
         CancellationToken cancellationToken)
     {
-        PendingMessage pendingMessage;
+        ForwardingMessage forwardingMessage;
         try
         {
-            pendingMessage = ParsePendingMessage(consumeResult);
+            forwardingMessage = ParsePendingMessage(consumeResult);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -220,10 +189,10 @@ public class KafkaConsumerService : BackgroundService
 
         for (var attempt = 1; attempt <= _maxRetryAttempts; attempt++)
         {
-            ProcessingResult result;
+            ForwardingResult result;
             try
             {
-                result = await ProcessMessageAsync(pendingMessage, attempt, cancellationToken);
+                result = await ProcessMessageAsync(forwardingMessage, attempt, cancellationToken);
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
@@ -260,19 +229,9 @@ public class KafkaConsumerService : BackgroundService
         }
     }
 
-    private PendingMessage ParsePendingMessage(ConsumeResult<string, string> consumeResult)
+    private ForwardingMessage ParsePendingMessage(ConsumeResult<string, string> consumeResult)
     {
-        var eventMessage = JsonNode.Parse(consumeResult.Message.Value)!.AsObject();
-
-        var deviceMessageTypeAsInt = eventMessage[DeviceMessageType]?.GetValue<int?>();
-        var updateDateAsString = eventMessage[UpdateDate]?.GetValue<string>();
-        var updateDate = ParseToUtc(updateDateAsString);
-        var deviceEventType = deviceMessageTypeAsInt.HasValue
-            ? (DeviceEventType)deviceMessageTypeAsInt.Value
-            : DeviceEventType.Confirmed;
-
-        var httpRequest = eventMessage[HttpRequest]?.GetValue<string>();
-        var urlSuffix = eventMessage[UrlSuffix]?.GetValue<string>();
+        var forwardingMessage = _messageParser.Parse(consumeResult.Message.Value);
 
         var logPayload = JsonNode.Parse(consumeResult.Message.Value)!.AsObject();
         logPayload.Remove(HttpRequest);
@@ -280,18 +239,14 @@ public class KafkaConsumerService : BackgroundService
 
         _logger.LogInformation(
             "Received Kafka message: TopicPartitionOffset {TopicPartitionOffset}, device event type {DeviceEventType}, HTTP request \"{Method}\", suffix \"{Suffix}\", payload:\n{Payload}",
-            consumeResult.TopicPartitionOffset, deviceEventType, httpRequest, urlSuffix,
+            consumeResult.TopicPartitionOffset, forwardingMessage.DeviceEventType, forwardingMessage.HttpMethod, forwardingMessage.UrlSuffix,
             logPayload.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 
-        return new PendingMessage(
-            consumeResult.Message.Value,
-            httpRequest,
-            urlSuffix,
-            updateDate);
+        return forwardingMessage;
     }
 
-    private async Task<ProcessingResult> ProcessMessageAsync(
-        PendingMessage message,
+    private async Task<ForwardingResult> ProcessMessageAsync(
+        ForwardingMessage message,
         int attempt,
         CancellationToken cancellationToken)
     {
@@ -299,53 +254,7 @@ public class KafkaConsumerService : BackgroundService
             "Processing Kafka message (Attempt {Attempt}/{MaxAttempts}): \"{Method}\", suffix \"{Suffix}\". UpdateDate: {UpdateDate:o}",
             attempt, _maxRetryAttempts, message.HttpMethod, message.UrlSuffix, message.UpdateDate);
 
-        var eventMessage = JsonNode.Parse(message.Body)!.AsObject();
-        return await SendToApiAsync(message.HttpMethod, message.UrlSuffix, eventMessage, cancellationToken);
-    }
-
-    private async Task<ProcessingResult> SendToApiAsync(
-        string? httpMethod,
-        string? urlSuffix,
-        JsonObject payload,
-        CancellationToken cancellationToken)
-    {
-        if (urlSuffix == null)
-        {
-            return new ProcessingResult(false, "urlSuffix is null");
-        }
-
-        if (string.IsNullOrWhiteSpace(httpMethod))
-        {
-            return new ProcessingResult(false, "httpMethod is null or empty");
-        }
-
-        try
-        {
-            using var httpClient = _httpClientFactory.CreateClient();
-            using var jsonContent = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json");
-
-            var response = httpMethod.ToUpperInvariant() == "PUT"
-                ? await httpClient.PutAsync(_apiEndpoint + urlSuffix, jsonContent, cancellationToken)
-                : await httpClient.PostAsync(_apiEndpoint + urlSuffix, jsonContent, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var reason = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}";
-                throw new Exception(reason);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("Caught {ExceptionType} exception: {Message}.", ex.GetType().Name, ex.Message);
-            if (_apiTarget == nameof(ApiBaseUrlSettings.Codespace))
-            {
-                await _codespaceAwaker.Awake(cancellationToken);
-            }
-
-            return new ProcessingResult(false, $"Exception: {ex.Message}");
-        }
-
-        return new ProcessingResult(true, null);
+        return await _restApiForwarder.ForwardAsync(message, cancellationToken);
     }
 
     private async Task PublishToDeadLetterTopicAsync(
@@ -400,21 +309,4 @@ public class KafkaConsumerService : BackgroundService
         }
     }
 
-    private static DateTime ParseToUtc(string? input)
-    {
-        if (string.IsNullOrWhiteSpace(input)) return DateTime.MinValue;
-        if (DateTimeOffset.TryParse(input, out var dto)) return dto.UtcDateTime;
-        if (DateTime.TryParse(input, out var dt)) return dt.Kind == DateTimeKind.Local ? dt.ToUniversalTime() : dt;
-
-        return DateTime.MinValue;
-    }
-
-    private sealed record PendingMessage(
-        string Body,
-        string? HttpMethod,
-        string? UrlSuffix,
-        DateTime UpdateDate
-    );
-
-    private readonly record struct ProcessingResult(bool Success, string? ErrorReason);
 }

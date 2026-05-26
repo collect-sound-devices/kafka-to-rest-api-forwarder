@@ -30,22 +30,51 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Deploy", "Deploy", "{3DADC4
 		deploy-via-docker\docker-compose.yml = deploy-via-docker\docker-compose.yml
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KafkaToRestApiForwarder.Tests", "Tests\KafkaToRestApiForwarder.Tests\KafkaToRestApiForwarder.Tests.csproj", "{600E8B13-E55B-4E24-A6A3-44A153D29031}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x86 = Debug|x86
 		Release|x64 = Release|x64
+		Release|Any CPU = Release|Any CPU
+		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Debug|x64.ActiveCfg = Debug|Any CPU
 		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Debug|x64.Build.0 = Debug|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Debug|x86.Build.0 = Debug|Any CPU
 		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Release|x64.ActiveCfg = Release|Any CPU
 		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Release|x64.Build.0 = Release|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Release|x86.ActiveCfg = Release|Any CPU
+		{D95C52E8-5631-4FDC-9DC6-A3C3C23A91DA}.Release|x86.Build.0 = Release|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Debug|x64.Build.0 = Debug|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Debug|x86.Build.0 = Debug|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Release|x64.ActiveCfg = Release|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Release|x64.Build.0 = Release|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Release|Any CPU.Build.0 = Release|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Release|x86.ActiveCfg = Release|Any CPU
+		{600E8B13-E55B-4E24-A6A3-44A153D29031}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{3DADC45F-674E-4AA5-AB7D-F1F69AB72C28} = {5B18478E-73DC-4782-9250-B32908625D1C}
+		{600E8B13-E55B-4E24-A6A3-44A153D29031} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {C671421F-7380-4959-B337-7B33904234CC}

@@ -24,8 +24,10 @@ var builder = Host.CreateDefaultBuilder(args)
         services.Configure<GitHubCodespaceSettings>(config.GetSection("GitHubCodespace"));
 
         services.AddSingleton<CryptService>();
+        services.AddSingleton<KafkaMessageParser>();
         services.AddHttpClient();
         services.AddSingleton<GitHubCodespaceAwaker>();
+        services.AddSingleton<IRestApiForwarder, RestApiForwarder>();
         services.AddHostedService<KafkaConsumerService>();
     });
 
