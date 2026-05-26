@@ -9,6 +9,7 @@ public record KafkaConsumerSettings
     public string ConsumerGroupId { get; init; } = "audio-device-api-forwarder";
     public string DeadLetterTopic { get; init; } = "audio-device-events.failed";
     public bool AutoOffsetResetEarliest { get; init; } = true;
+    public int IdleLogIntervalInSeconds { get; init; } = 30;
 }
 
 public record KafkaMessageDeliverySettings

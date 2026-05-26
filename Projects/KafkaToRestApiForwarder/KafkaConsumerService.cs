@@ -26,6 +26,7 @@ public class KafkaConsumerService : BackgroundService
     private readonly GitHubCodespaceAwaker _codespaceAwaker;
     private readonly string _consumerGroupId;
     private readonly string _deadLetterTopic;
+    private readonly TimeSpan _idleLogInterval;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<KafkaConsumerService> _logger;
     private readonly int _maxRetryAttempts;
@@ -47,6 +48,7 @@ public class KafkaConsumerService : BackgroundService
         _topic = consumerSettings.Topic;
         _consumerGroupId = consumerSettings.ConsumerGroupId;
         _deadLetterTopic = consumerSettings.DeadLetterTopic;
+        _idleLogInterval = TimeSpan.FromSeconds(Math.Max(5, consumerSettings.IdleLogIntervalInSeconds));
         _autoOffsetReset = consumerSettings.AutoOffsetResetEarliest
             ? AutoOffsetReset.Earliest
             : AutoOffsetReset.Latest;
@@ -98,7 +100,7 @@ public class KafkaConsumerService : BackgroundService
             BootstrapServers = _bootstrapServers
         };
 
-        await EnsureTopicsReadyAsync(cancellationToken);
+        await CreateTopicsIfMissingAsync(cancellationToken);
 
         using var consumer = new ConsumerBuilder<string, string>(consumerConfig)
             .SetErrorHandler((_, error) => _logger.LogError("Kafka consumer error: {Reason}", error.Reason))
@@ -112,6 +114,8 @@ public class KafkaConsumerService : BackgroundService
 
         try
         {
+            var nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 ConsumeResult<string, string>? consumeResult;
@@ -123,18 +127,26 @@ public class KafkaConsumerService : BackgroundService
                 {
                     _logger.LogWarning(
                         ex,
-                        "Subscribed topic \"{Topic}\" is not available yet. Retrying after topic readiness check.",
+                        "Subscribed topic \"{Topic}\" is not available yet. Retrying.",
                         _topic);
-                    await EnsureTopicsReadyAsync(cancellationToken);
                     await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
                     continue;
                 }
 
                 if (consumeResult == null)
                 {
+                    if (DateTimeOffset.UtcNow >= nextIdleLogAt)
+                    {
+                        _logger.LogInformation(
+                            "Kafka consumer is idle. Waiting for messages on topic \"{Topic}\" as group \"{ConsumerGroupId}\".",
+                            _topic, _consumerGroupId);
+                        nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
+                    }
+
                     continue;
                 }
 
+                nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
                 await ProcessConsumeResultAsync(consumer, deadLetterProducer, consumeResult, cancellationToken);
             }
         }
@@ -149,54 +161,37 @@ public class KafkaConsumerService : BackgroundService
         }
     }
 
-    private async Task EnsureTopicsReadyAsync(CancellationToken cancellationToken)
+    private async Task CreateTopicsIfMissingAsync(CancellationToken cancellationToken)
     {
         using var adminClient = new AdminClientBuilder(new AdminClientConfig
         {
             BootstrapServers = _bootstrapServers
         }).Build();
 
-        var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(10));
-        var existingTopics = metadata.Topics
-            .Where(topicMetadata => topicMetadata.Error.Code == ErrorCode.NoError)
-            .Select(topicMetadata => topicMetadata.Topic)
-            .ToHashSet(StringComparer.Ordinal);
-
-        var missingTopics = new[] { _topic, _deadLetterTopic }
-            .Where(topic => !existingTopics.Contains(topic))
-            .Select(topic => new TopicSpecification
-            {
-                Name = topic,
-                NumPartitions = 3,
-                ReplicationFactor = 1
-            })
-            .ToArray();
-
-        if (missingTopics.Length == 0)
+        var topics = new[]
         {
-            return;
-        }
+            new TopicSpecification { Name = _topic, NumPartitions = 3, ReplicationFactor = 1 },
+            new TopicSpecification { Name = _deadLetterTopic, NumPartitions = 3, ReplicationFactor = 1 }
+        };
 
         try
         {
-            await adminClient.CreateTopicsAsync(missingTopics);
-            _logger.LogInformation(
-                "Kafka topics created: {Topics}",
-                string.Join(", ", missingTopics.Select(topic => topic.Name)));
+            await adminClient.CreateTopicsAsync(topics);
+            _logger.LogInformation("Kafka topics created or already scheduled for creation: {Topics}",
+                string.Join(", ", topics.Select(topic => topic.Name)));
         }
         catch (CreateTopicsException ex)
         {
-            var unexpectedResults = ex.Results
+            var realErrors = ex.Results
                 .Where(result => result.Error.Code != ErrorCode.TopicAlreadyExists)
                 .ToArray();
 
-            if (unexpectedResults.Length > 0)
+            if (realErrors.Length > 0)
             {
                 throw;
             }
 
-            _logger.LogInformation(
-                "Kafka topics already existed during creation race: {Topics}",
+            _logger.LogInformation("Kafka topics already exist: {Topics}",
                 string.Join(", ", ex.Results.Select(result => result.Topic)));
         }
 
