@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Confluent.Kafka;
+using Confluent.Kafka.Admin;
 using Microsoft.Extensions.Options;
 using static KafkaToRestApiForwarder.Contracts.MessageFields;
 
@@ -97,6 +98,8 @@ public class KafkaConsumerService : BackgroundService
             BootstrapServers = _bootstrapServers
         };
 
+        await EnsureTopicsReadyAsync(cancellationToken);
+
         using var consumer = new ConsumerBuilder<string, string>(consumerConfig)
             .SetErrorHandler((_, error) => _logger.LogError("Kafka consumer error: {Reason}", error.Reason))
             .Build();
@@ -111,7 +114,22 @@ public class KafkaConsumerService : BackgroundService
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var consumeResult = consumer.Consume(TimeSpan.FromSeconds(1));
+                ConsumeResult<string, string>? consumeResult;
+                try
+                {
+                    consumeResult = consumer.Consume(TimeSpan.FromSeconds(1));
+                }
+                catch (ConsumeException ex) when (ex.Error.Code == ErrorCode.UnknownTopicOrPart)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Subscribed topic \"{Topic}\" is not available yet. Retrying after topic readiness check.",
+                        _topic);
+                    await EnsureTopicsReadyAsync(cancellationToken);
+                    await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                    continue;
+                }
+
                 if (consumeResult == null)
                 {
                     continue;
@@ -129,6 +147,60 @@ public class KafkaConsumerService : BackgroundService
             _logger.LogInformation("Closing Kafka consumer.");
             consumer.Close();
         }
+    }
+
+    private async Task EnsureTopicsReadyAsync(CancellationToken cancellationToken)
+    {
+        using var adminClient = new AdminClientBuilder(new AdminClientConfig
+        {
+            BootstrapServers = _bootstrapServers
+        }).Build();
+
+        var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(10));
+        var existingTopics = metadata.Topics
+            .Where(topicMetadata => topicMetadata.Error.Code == ErrorCode.NoError)
+            .Select(topicMetadata => topicMetadata.Topic)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var missingTopics = new[] { _topic, _deadLetterTopic }
+            .Where(topic => !existingTopics.Contains(topic))
+            .Select(topic => new TopicSpecification
+            {
+                Name = topic,
+                NumPartitions = 3,
+                ReplicationFactor = 1
+            })
+            .ToArray();
+
+        if (missingTopics.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await adminClient.CreateTopicsAsync(missingTopics);
+            _logger.LogInformation(
+                "Kafka topics created: {Topics}",
+                string.Join(", ", missingTopics.Select(topic => topic.Name)));
+        }
+        catch (CreateTopicsException ex)
+        {
+            var unexpectedResults = ex.Results
+                .Where(result => result.Error.Code != ErrorCode.TopicAlreadyExists)
+                .ToArray();
+
+            if (unexpectedResults.Length > 0)
+            {
+                throw;
+            }
+
+            _logger.LogInformation(
+                "Kafka topics already existed during creation race: {Topics}",
+                string.Join(", ", ex.Results.Select(result => result.Topic)));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     private async Task ProcessConsumeResultAsync(
