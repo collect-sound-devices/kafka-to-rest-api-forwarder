@@ -11,7 +11,7 @@ version: "1.0"
 
 # Analyze the .NET solution in this repository.
 dotnet:
-  solution: RmqToRestApiForwarder.sln
+  solution: KafkaToRestApiForwarder.sln
 
 # Keep the default .NET checks and make code metrics explicit.
 profile:
@@ -40,12 +40,10 @@ exclude:
       - deploy-via-docker
       - artifacts
       - msbuildLib
-      - Projects\RmqToRestApiForwarder\appsettings.Docker.json
-      - Projects\RmqToRestApiForwarder\appsettings.json
-#      - Projects\RmqToRestApiForwarder\ConfigurationRecords.cs
+      - Projects\KafkaToRestApiForwarder\appsettings.Docker.json
+      - Projects\KafkaToRestApiForwarder\appsettings.json
+#      - Projects\KafkaToRestApiForwarder\ConfigurationRecords.cs
       - docker-compose.yml
-      - PODMAN-vs-DOCKER.md
-      - RmqToRestApiForwarder-Release-Notes.md
 
 #Execute shell command before Qodana execution (Applied in CI/CD pipeline)
 #bootstrap: sh ./prepare-qodana.sh
