@@ -2,14 +2,13 @@ namespace KafkaToRestApiForwarder;
 
 // Bound options classes must public read-write properties
 // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
-public record KafkaServerSettings
+public record KafkaConsumerSettings
 {
-    public string HostName { get; init; } = "localhost";
-    public string QueueName { get; init; } = "sdr_queue";
-    public string UserName { get; init; } = "guest";
-    public string Password { get; init; } = "guest";
-    public int Port { get; init; } = 5671;
-    public int NetworkRecoveryIntervalInSeconds { get; init; } = 3;
+    public string BootstrapServers { get; init; } = "localhost:29092";
+    public string Topic { get; init; } = "audio-device-events";
+    public string ConsumerGroupId { get; init; } = "audio-device-api-forwarder";
+    public string DeadLetterTopic { get; init; } = "audio-device-events.failed";
+    public bool AutoOffsetResetEarliest { get; init; } = true;
 }
 
 public record KafkaMessageDeliverySettings

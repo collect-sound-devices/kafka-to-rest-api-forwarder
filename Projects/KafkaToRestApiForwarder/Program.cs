@@ -18,7 +18,7 @@ var builder = Host.CreateDefaultBuilder(args)
     {
         var config = context.Configuration;
 
-        services.Configure<KafkaServerSettings>(config.GetSection("Kafka:Service"));
+        services.Configure<KafkaConsumerSettings>(config.GetSection("Kafka:Consumer"));
         services.Configure<KafkaMessageDeliverySettings>(config.GetSection("Kafka:MessageDelivery"));
         services.Configure<ApiBaseUrlSettings>(config.GetSection("ApiBaseUrl"));
         services.Configure<GitHubCodespaceSettings>(config.GetSection("GitHubCodespace"));
@@ -26,6 +26,7 @@ var builder = Host.CreateDefaultBuilder(args)
         services.AddSingleton<CryptService>();
         services.AddHttpClient();
         services.AddSingleton<GitHubCodespaceAwaker>();
+        services.AddHostedService<KafkaConsumerService>();
     });
 
 await builder.Build().RunAsync();
