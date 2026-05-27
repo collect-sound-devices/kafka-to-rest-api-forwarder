@@ -34,19 +34,19 @@ services:
     depends_on:
       - kafka
 
-#   forwarder:
-#   image: danzigereduard/kafka-to-rest-api-forwarder:$version$
-#   restart: unless-stopped
-#   environment:
-#     DOTNET_ENVIRONMENT: Docker
-#     Kafka__Consumer__BootstrapServers: kafka:9092
-#     Kafka__Consumer__Topic: audio-device-events
-#     Kafka__Consumer__ConsumerGroupId: audio-device-api-forwarder
-#     Kafka__Consumer__DeadLetterTopic: audio-device-events.failed
-#     Kafka__Consumer__AutoOffsetResetEarliest: true
-#     Kafka__Consumer__IdleLogIntervalInSeconds: 60
-#   depends_on:
-#     - kafka
-#   volumes:
-#     - ./logs:/app/logs
-                
+  forwarder:
+    image:
+      danzigereduard/kafka-to-rest-api-forwarder:$version$
+    restart: unless-stopped
+    environment:
+      DOTNET_ENVIRONMENT: Docker
+      Kafka__Consumer__BootstrapServers: kafka:9092
+      Kafka__Consumer__Topic: audio-device-events
+      Kafka__Consumer__ConsumerGroupId: audio-device-api-forwarder
+      Kafka__Consumer__DeadLetterTopic: audio-device-events.failed
+      Kafka__Consumer__AutoOffsetResetEarliest: true
+      Kafka__Consumer__IdleLogIntervalInSeconds: 60
+    depends_on:
+      - kafka
+    volumes:
+      - ./logs:/app/logs
