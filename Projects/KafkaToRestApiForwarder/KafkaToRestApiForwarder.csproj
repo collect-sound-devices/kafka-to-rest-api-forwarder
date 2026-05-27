@@ -23,11 +23,43 @@
         <PackageReference Include="System.IO.Hashing" Version="10.0.6" />
     </ItemGroup>
 
-    <Target Name="ProcessReleaseNotesAndCompose" Condition=" '$(_IsPublishing)' != 'true' " BeforeTargets="BeforeBuild">
+  <UsingTask TaskName="RegexReplaceInFile" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <Pattern ParameterType="System.String" Required="true" />
+      <Replacement ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Method" Language="cs"><![CDATA[
+public override bool Execute()
+{
+    foreach (var item in Files)
+    {
+        var path = item.ItemSpec;
+        if (!File.Exists(path))
+            continue;
+        var text = File.ReadAllText(path);
+        var updated = Regex.Replace(text, Pattern, Replacement);
+        if (!string.Equals(text, updated, StringComparison.Ordinal))
+            File.WriteAllText(path, updated);
+    }
+    return true;
+}
+            ]]></Code>
+    </Task>
+  </UsingTask>
+
+
+  <Target Name="ProcessReleaseNotesAndCompose" Condition=" '$(_IsPublishing)' != 'true' " BeforeTargets="BeforeBuild">
         <PropertyGroup>
           <DeployComposeTargetPathName>$(ArtifactsDirectory)$(DeployComposeFileName)</DeployComposeTargetPathName>
           <BuildDate>$([System.DateTime]::UtcNow.ToString('dd.MM.yyyy'))</BuildDate>
         </PropertyGroup>
         <Copy SourceFiles="$(BaseDirectory)$(DeployComposeSourceSubDir)$(DeployComposeFileName)" DestinationFolder="$(ArtifactsDirectory)" />
+        <!-- Replace $version$ -->
+        <RegexReplaceInFile Files="$(DeployComposeTargetPathName)" Pattern="\$version\$" Replacement="$(Version)" />
     </Target>
 </Project>
