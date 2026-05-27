@@ -73,8 +73,6 @@ jobs:
     - name: Build with MSBuild
       run: |
         msbuild /p:Configuration=Release /target:Rebuild -restore
-        # The publishing is not necessary anymore, because distributed via Docker
-        # dotnet publish "Projects/RmqToRestApiForwarder/RmqToRestApiForwarder.csproj" -c Release -p:PublishProfile=WinX64 -v:detailed
 
     - name: Upload entire artifacts directory
       # Release notes and compose are placed to the artifacts directory, we need it.
@@ -98,7 +96,7 @@ jobs:
 
       - name: Build image with Docker
         run: |
-          docker build -t rmq-to-rest-api-forwarder:latest -f Projects/RmqToRestApiForwarder/Dockerfile .
+          docker build -t kafka-to-rest-api-forwarder:latest -f Projects/KafkaToRestApiForwarder/Dockerfile .
 
       - name: Login to Docker Hub
         env:
@@ -112,14 +110,13 @@ jobs:
           VERS: ${{ needs.build.outputs.version }}
           DOCKER_USER: ${{ secrets.DOCKER_HUB_USER }}
         run: |
-          docker tag rmq-to-rest-api-forwarder:latest docker.io/${DOCKER_USER}/rmq-to-rest-api-forwarder:${VERS}
-
+          docker tag kafka-to-rest-api-forwarder:latest docker.io/${DOCKER_USER}/kafka-to-rest-api-forwarder:${VERS}
       - name: Push image to Docker Hub
         env:
           VERS: ${{ needs.build.outputs.version }}
           DOCKER_USER: ${{ secrets.DOCKER_HUB_USER }}
         run: |
-          docker push docker.io/${DOCKER_USER}/rmq-to-rest-api-forwarder:${VERS}
+          docker push docker.io/${DOCKER_USER}/kafka-to-rest-api-forwarder:${VERS}
 
   publish:
     if: github.ref != 'refs/pull/develop'
@@ -140,5 +137,5 @@ jobs:
         run: |
           VERS=${{ needs.build.outputs.version }}
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-          gh release create "$VERS" --title "RmqToRestApiForwarder $VERS" --notes "Release of RambbitMQ To REST API Forwarder $VERS"
+          gh release create "$VERS" --title "KafkaToRestApiForwarder $VERS" --notes "Release of Kafka To REST API Forwarder $VERS"
           gh release upload "$VERS" build/*.***

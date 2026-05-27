@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Confluent.Kafka;
@@ -7,6 +8,7 @@ using static KafkaToRestApiForwarder.Contracts.MessageFields;
 
 namespace KafkaToRestApiForwarder;
 
+[SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging")]
 public class KafkaConsumerService : BackgroundService
 {
     private readonly AutoOffsetReset _autoOffsetReset;

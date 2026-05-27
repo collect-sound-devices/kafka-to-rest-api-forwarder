@@ -21,8 +21,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Documents", "Documents", "{
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docker", "Docker", "{5B18478E-73DC-4782-9250-B32908625D1C}"
 	ProjectSection(SolutionItems) = preProject
-		.dockerignore = .dockerignore
 		Projects\KafkaToRestApiForwarder\Dockerfile = Projects\KafkaToRestApiForwarder\Dockerfile
+		.dockerignore = .dockerignore
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Deploy", "Deploy", "{3DADC45F-674E-4AA5-AB7D-F1F69AB72C28}"

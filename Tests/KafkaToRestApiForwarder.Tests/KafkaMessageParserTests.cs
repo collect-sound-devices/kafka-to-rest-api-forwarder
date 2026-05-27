@@ -1,11 +1,13 @@
 using System.Text.Json;
 using KafkaToRestApiForwarder.Contracts;
+using Microsoft.Extensions.Logging;
+using NSubstitute;
 
 namespace KafkaToRestApiForwarder.Tests;
 
 public class KafkaMessageParserTests
 {
-    private readonly KafkaMessageParser _sut = new();
+    private readonly KafkaMessageParser _sut = new KafkaMessageParser(Substitute.For<ILogger<KafkaMessageParser>>());
 
     [Test]
     public void Parse_WhenMessageIsValid_ReturnsForwardingMessage()

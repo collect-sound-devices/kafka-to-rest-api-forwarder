@@ -12,12 +12,12 @@ WORKDIR /src
 COPY . .
 
 # Build and publish
-RUN dotnet build "RmqToRestApiForwarder.sln" -c Release
-RUN dotnet publish "Projects/RmqToRestApiForwarder/RmqToRestApiForwarder.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet build "KafkaToRestApiForwarder.sln" -c Release
+RUN dotnet publish "Projects/KafkaToRestApiForwarder/KafkaToRestApiForwarder.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 # Final image
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-ENTRYPOINT ["dotnet", "RmqToRestApiForwarder.dll"]
+ENTRYPOINT ["dotnet", "KafkaToRestApiForwarder.dll"]

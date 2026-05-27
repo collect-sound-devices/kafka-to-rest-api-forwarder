@@ -6,6 +6,7 @@ using System.Text.Json;
 
 namespace KafkaToRestApiForwarder;
 
+[SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging")]
 public class GitHubCodespaceAwaker(
     IOptions<GitHubCodespaceSettings> codespaceSettings,
     CryptService cryptService,
@@ -33,7 +34,6 @@ public class GitHubCodespaceAwaker(
 
     // Atomic compare-and-set helper
 
-    [SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging")]
     public async Task Awake(CancellationToken cancellationToken)
     {
         if (State != RequestState.Idle)
