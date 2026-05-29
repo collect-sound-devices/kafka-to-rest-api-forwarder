@@ -118,7 +118,7 @@ public class KafkaConsumerService : BackgroundService
                 }
 
                 nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
-                await ProcessConsumeResultAsync(consumer, deadLetterProducer, consumeResult, cancellationToken);
+                await ProcessConsumerResultAsync(consumer, deadLetterProducer, consumeResult, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -169,7 +169,7 @@ public class KafkaConsumerService : BackgroundService
         cancellationToken.ThrowIfCancellationRequested();
     }
 
-    private async Task ProcessConsumeResultAsync(
+    private async Task ProcessConsumerResultAsync(
         IConsumer<string, string> consumer,
         IProducer<string, string> deadLetterProducer,
         ConsumeResult<string, string> consumeResult,
