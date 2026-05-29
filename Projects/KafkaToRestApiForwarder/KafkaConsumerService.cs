@@ -118,7 +118,7 @@ public class KafkaConsumerService : BackgroundService
                 }
 
                 nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
-                await ProcessConsumeResultAsync(consumer, deadLetterProducer, consumeResult, cancellationToken);
+                await ProcessConsumerResultAsync(consumer, deadLetterProducer, consumeResult, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -169,7 +169,7 @@ public class KafkaConsumerService : BackgroundService
         cancellationToken.ThrowIfCancellationRequested();
     }
 
-    private async Task ProcessConsumeResultAsync(
+    private async Task ProcessConsumerResultAsync(
         IConsumer<string, string> consumer,
         IProducer<string, string> deadLetterProducer,
         ConsumeResult<string, string> consumeResult,
@@ -184,51 +184,68 @@ public class KafkaConsumerService : BackgroundService
         {
             var reason = $"Invalid Kafka message payload: {ex.Message}";
             _logger.LogError(ex, "{Reason}. Moving message to dead-letter topic.", reason);
-            await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, reason, cancellationToken);
-            CommitProcessedMessage(consumer, consumeResult);
+            await DeadLetterAndCommitAsync(consumer, deadLetterProducer, consumeResult, reason, cancellationToken);
             return;
         }
 
+        ForwardingResult result;
+        try
+        {
+            result = await ForwardWithRetriesAsync(forwardingMessage, cancellationToken);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            var reason = $"Unexpected Kafka message processing failure: {ex.Message}";
+            _logger.LogError(ex, "{Reason}. Moving message to dead-letter topic.", reason);
+            await DeadLetterAndCommitAsync(consumer, deadLetterProducer, consumeResult, reason, cancellationToken);
+            return;
+        }
+
+        if (result.Success)
+        {
+            CommitProcessedMessage(consumer, consumeResult);
+            _logger.LogInformation(
+                "Kafka message commited successfully om TopicPartitionOffset {TopicPartitionOffset}.",
+                consumeResult.TopicPartitionOffset);
+            return;
+        }
+
+        _logger.LogError(
+            "All attempt to deliver a Kafka message to REST API server failed. Moving message to dead-letter topic. Reason: {Reason}.", result.ErrorReason);
+        await DeadLetterAndCommitAsync(consumer, deadLetterProducer, consumeResult, result.ErrorReason, cancellationToken);
+    }
+
+    private async Task<ForwardingResult> ForwardWithRetriesAsync(
+        ForwardingMessage forwardingMessage,
+        CancellationToken cancellationToken)
+    {
         for (var attempt = 1; attempt <= _maxRetryAttempts; attempt++)
         {
-            ForwardingResult result;
-            try
+            var result = await ProcessMessageAsync(forwardingMessage, attempt, cancellationToken);
+
+            if (result.Success || attempt >= _maxRetryAttempts)
             {
-                result = await ProcessMessageAsync(forwardingMessage, attempt, cancellationToken);
-            }
-            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
-            {
-                var reason = $"Unexpected Kafka message processing failure: {ex.Message}";
-                _logger.LogError(ex, "{Reason}. Moving message to dead-letter topic.", reason);
-                await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, reason, cancellationToken);
-                CommitProcessedMessage(consumer, consumeResult);
-                return;
+                return result;
             }
 
-            if (result.Success)
-            {
-                CommitProcessedMessage(consumer, consumeResult);
-                _logger.LogInformation(
-                    "Message processed successfully. TopicPartitionOffset {TopicPartitionOffset} Attempt {Attempt}",
-                    consumeResult.TopicPartitionOffset, attempt);
-                return;
-            }
-
-            if (attempt < _maxRetryAttempts)
-            {
-                _logger.LogWarning(
-                    "Attempt {Attempt}/{MaxAttempts} failed. Retrying in {DelaySeconds}s. Reason: {Reason}",
-                    attempt, _maxRetryAttempts, _retryDelay.TotalSeconds, result.ErrorReason);
-                await Task.Delay(_retryDelay, cancellationToken);
-                continue;
-            }
-
-            await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, result.ErrorReason, cancellationToken);
-            CommitProcessedMessage(consumer, consumeResult);
-            _logger.LogError(
-                "Attempt {Attempt} (max) failed. Message published to dead-letter topic \"{DeadLetterTopic}\". Reason: {Reason}",
-                attempt, _deadLetterTopic, result.ErrorReason);
+            _logger.LogWarning(
+                "Attempt {Attempt}/{MaxAttempts} failed. Retrying in {DelaySeconds}s. Reason: {Reason}",
+                attempt, _maxRetryAttempts, _retryDelay.TotalSeconds, result.ErrorReason);
+            await Task.Delay(_retryDelay, cancellationToken);
         }
+
+        throw new InvalidOperationException("Retry loop completed without a forwarding result.");
+    }
+
+    private async Task DeadLetterAndCommitAsync(
+        IConsumer<string, string> consumer,
+        IProducer<string, string> deadLetterProducer,
+        ConsumeResult<string, string> consumeResult,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, reason, cancellationToken);
+        CommitProcessedMessage(consumer, consumeResult);
     }
 
     private ForwardingMessage ParsePendingMessage(ConsumeResult<string, string> consumeResult)

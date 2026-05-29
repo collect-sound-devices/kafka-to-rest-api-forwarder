@@ -1,14 +1,14 @@
 # kafka-to-rest-api-forwarder (KafkaToRestApiForwarder)
 
-A forwarding microservice for sound events; see [WinSoundScanner](https://github.com/collect-sound-devices/win-sound-scanner-go) and [LinuxSoundScanner](https://github.com/collect-sound-devices/linux-sound-scanner).
+A forwarding Kafka-based microservice for sound events; see [WinSoundScanner](https://github.com/collect-sound-devices/win-sound-scanner-go) and [LinuxSoundScanner](https://github.com/collect-sound-devices/linux-sound-scanner).
 
 ## Motivation
 
-KafkaToRestApiForwarder's purpose is to forward the Kafka events produced by Linux and Windows Sound Scanners to a REST API endpoint.
+KafkaToRestApiForwarder's purpose is to forward the Kafka events produced by Linux or Windows Sound Scanners to a REST API endpoint.
 
 ## Place in *collect-sound-devices* Architecture
 
-Kafka is the request transport between the scanner services and this forwarder.
+Apache Kafka is the request transport between the scanners and this forwarder.
 
 <div style="zoom: 0.5;">
 
@@ -67,7 +67,7 @@ rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
 - It reads the events from a local Kafka topic and POSTs/PUTs to the configured API base URL.
 - It applies debouncing of frequent volume-change PUT-requests.
   * The respective time window is configurable via `Kafka:MessageDelivery:VolumeChangeEventDebouncingWindowInMilliseconds`.
-- It guarantees reliable delivery with delayed retries (*Event Forwarding Pattern*, see below)
+- It guarantees reliable delivery with delayed retries
   * It retries failed API calls before committing the consumed Kafka offset.
   * A message is published to a dead-letter topic after the retry max is reached.
   * See settings: `Kafka:MessageDelivery:RetryDelayInSeconds`, `Kafka:MessageDelivery:MaxRetryAttempts`, `Kafka:Consumer:DeadLetterTopic`.
