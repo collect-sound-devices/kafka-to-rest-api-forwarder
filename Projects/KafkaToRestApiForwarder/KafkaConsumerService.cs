@@ -189,10 +189,9 @@ public class KafkaConsumerService : BackgroundService
         }
 
         ForwardingResult result;
-        int attempt;
         try
         {
-            (result, attempt) = await ForwardWithRetriesAsync(forwardingMessage, cancellationToken);
+            result = await ForwardWithRetriesAsync(forwardingMessage, cancellationToken);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -206,46 +205,33 @@ public class KafkaConsumerService : BackgroundService
         {
             CommitProcessedMessage(consumer, consumeResult);
             _logger.LogInformation(
-                "Message processed successfully. TopicPartitionOffset {TopicPartitionOffset} Attempt {Attempt}",
-                consumeResult.TopicPartitionOffset, attempt);
+                "Kafka message commited successfully om TopicPartitionOffset {TopicPartitionOffset}.",
+                consumeResult.TopicPartitionOffset);
             return;
         }
 
-        await DeadLetterAndCommitAsync(
-            consumer,
-            deadLetterProducer,
-            consumeResult,
-            result.ErrorReason,
-            cancellationToken);
         _logger.LogError(
-            "Attempt {Attempt} (max) failed. Message published to dead-letter topic \"{DeadLetterTopic}\". Reason: {Reason}",
-            attempt, _deadLetterTopic, result.ErrorReason);
+            "All attempt to deliver a Kafka message to REST API server failed. Moving message to dead-letter topic. Reason: {Reason}.", result.ErrorReason);
+        await DeadLetterAndCommitAsync(consumer, deadLetterProducer, consumeResult, result.ErrorReason, cancellationToken);
     }
 
-    private async Task<(ForwardingResult Result, int Attempt)> ForwardWithRetriesAsync(
+    private async Task<ForwardingResult> ForwardWithRetriesAsync(
         ForwardingMessage forwardingMessage,
         CancellationToken cancellationToken)
     {
         for (var attempt = 1; attempt <= _maxRetryAttempts; attempt++)
         {
-            ForwardingResult result;
-            result = await ProcessMessageAsync(forwardingMessage, attempt, cancellationToken);
+            var result = await ProcessMessageAsync(forwardingMessage, attempt, cancellationToken);
 
-            if (result.Success)
+            if (result.Success || attempt >= _maxRetryAttempts)
             {
-                return (result, attempt);
+                return result;
             }
 
-            if (attempt < _maxRetryAttempts)
-            {
-                _logger.LogWarning(
-                    "Attempt {Attempt}/{MaxAttempts} failed. Retrying in {DelaySeconds}s. Reason: {Reason}",
-                    attempt, _maxRetryAttempts, _retryDelay.TotalSeconds, result.ErrorReason);
-                await Task.Delay(_retryDelay, cancellationToken);
-                continue;
-            }
-
-            return (result, attempt);
+            _logger.LogWarning(
+                "Attempt {Attempt}/{MaxAttempts} failed. Retrying in {DelaySeconds}s. Reason: {Reason}",
+                attempt, _maxRetryAttempts, _retryDelay.TotalSeconds, result.ErrorReason);
+            await Task.Delay(_retryDelay, cancellationToken);
         }
 
         throw new InvalidOperationException("Retry loop completed without a forwarding result.");
