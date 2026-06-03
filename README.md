@@ -1,10 +1,12 @@
 # kafka-to-rest-api-forwarder (KafkaToRestApiForwarder)
 
-A forwarding Kafka-based microservice for sound events; see [WinSoundScanner](https://github.com/collect-sound-devices/win-sound-scanner-go) and [LinuxSoundScanner](https://github.com/collect-sound-devices/linux-sound-scanner).
+A forwarding microservice for sound messages in the Apache Kafka-based message workflow between scanners and a REST API.
+KafkaToRestApiForwarder is similar to a RmqToRestApiForwarder microservice, leveraging the alternative RabbitMQ-based workflow.
 
 ## Motivation
 
-KafkaToRestApiForwarder's purpose is to forward the Kafka events produced by Linux or Windows Sound Scanners to a REST API endpoint.
+KafkaToRestApiForwarder's purpose is to forward and deliver the Kafka events produced by Windows and Linux Sound Scanners (see [WinSoundScanner](https://github.com/collect-sound-devices/win-sound-scanner-go) and [LinuxSoundScanner](https://github.com/collect-sound-devices/linux-sound-scanner) )
+to the audio device repository REST API, see [AudioDeviceRepoServer](https://github.com/collect-sound-devices/[DeviceRepositoryServer](https://github.com/collect-sound-devices/audio-device-repo-server))
 
 ## Place in *collect-sound-devices* Architecture
 
@@ -63,12 +65,13 @@ rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
 
 - (Background) The Windows and Linux Sound Scanners transform the sound events into HTTP requests
  and publish them as events to a colocated Kafka topic.
-- KafkaToRestApiForwarder runs as a Docker container on the same machine.
+- KafkaToRestApiForwarder runs in a Docker container on the same machine.
 - It reads the events from a local Kafka topic and POSTs/PUTs to the configured API base URL.
 - It applies debouncing of frequent volume-change PUT-requests.
   * The respective time window is configurable via `Kafka:MessageDelivery:VolumeChangeEventDebouncingWindowInMilliseconds`.
 - It guarantees reliable delivery with delayed retries
   * It retries failed API calls before committing the consumed Kafka offset.
+  * It tries to awake the API if configured.  
   * A message is published to a dead-letter topic after the retry max is reached.
   * See settings: `Kafka:MessageDelivery:RetryDelayInSeconds`, `Kafka:MessageDelivery:MaxRetryAttempts`, `Kafka:Consumer:DeadLetterTopic`.
 
@@ -111,9 +114,6 @@ rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
     # Publish with the included publish profile
     dotnet publish "Projects/KafkaToRestApiForwarder/KafkaToRestApiForwarder.csproj" -c Release -p:PublishProfile=WinX64
     ```
-
-4. Podman vs Docker.<br>
-See: [PODMAN-vs-DOCKER.md](https://github.com/collect-sound-devices/kafka-to-rest-api-forwarder/blob/HEAD/PODMAN-vs-DOCKER.md)
 
 ## Changelog
 - 2026-06-03: Extra API service is used to start an Audio Repository API Codespace 
