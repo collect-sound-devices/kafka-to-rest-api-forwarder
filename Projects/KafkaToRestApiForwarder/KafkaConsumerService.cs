@@ -55,7 +55,7 @@ public class KafkaConsumerService : BackgroundService
             _retryDelay.TotalSeconds);
     }
 
-    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var consumerConfig = new ConsumerConfig
         {
@@ -71,7 +71,7 @@ public class KafkaConsumerService : BackgroundService
             BootstrapServers = _bootstrapServers
         };
 
-        await CreateTopicsIfMissingAsync(cancellationToken);
+        await CreateTopicsIfMissingAsync(stoppingToken);
 
         using var consumer = new ConsumerBuilder<string, string>(consumerConfig)
             .SetErrorHandler((_, error) => _logger.LogError("Kafka consumer error: {Reason}", error.Reason))
@@ -87,7 +87,7 @@ public class KafkaConsumerService : BackgroundService
         {
             var nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
 
-            while (!cancellationToken.IsCancellationRequested)
+            while (!stoppingToken.IsCancellationRequested)
             {
                 ConsumeResult<string, string>? consumeResult;
                 try
@@ -100,7 +100,7 @@ public class KafkaConsumerService : BackgroundService
                         ex,
                         "Subscribed topic \"{Topic}\" is not available yet. Retrying.",
                         _topic);
-                    await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                    await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
                     continue;
                 }
 
@@ -118,7 +118,7 @@ public class KafkaConsumerService : BackgroundService
                 }
 
                 nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
-                await ProcessConsumerResultAsync(consumer, deadLetterProducer, consumeResult, cancellationToken);
+                await ProcessConsumerResultAsync(consumer, deadLetterProducer, consumeResult, stoppingToken);
             }
         }
         catch (OperationCanceledException)

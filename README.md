@@ -116,6 +116,7 @@ rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
 See: [PODMAN-vs-DOCKER.md](https://github.com/collect-sound-devices/kafka-to-rest-api-forwarder/blob/HEAD/PODMAN-vs-DOCKER.md)
 
 ## Changelog
+- 2026-06-03: Extra API service is used to start an Audio Repository API Codespace 
 - 2026-05-25: Initialized as alternative to RabbitMQ-to-REST-API-Farwarder
 
 ## License

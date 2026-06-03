@@ -23,7 +23,6 @@ var builder = Host.CreateDefaultBuilder(args)
         services.Configure<ApiBaseUrlSettings>(config.GetSection("ApiBaseUrl"));
         services.Configure<GitHubCodespaceSettings>(config.GetSection("GitHubCodespace"));
 
-        services.AddSingleton<CryptService>();
         services.AddSingleton<KafkaMessageParser>();
         services.AddHttpClient();
         services.AddSingleton<GitHubCodespaceAwaker>();
