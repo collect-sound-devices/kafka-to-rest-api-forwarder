@@ -1,3 +1,3 @@
 namespace KafkaToRestApiForwarder;
 
-public readonly record struct ForwardingResult(bool Success, string? ErrorReason);
+public sealed record ForwardingResult(bool Success, string? ErrorReason);
