@@ -72,7 +72,9 @@ public sealed class RestApiForwarder : IRestApiForwarder
             using var httpClient = _httpClientFactory.CreateClient();
             using var jsonContent = new StringContent(message.Payload.ToJsonString(), Encoding.UTF8, "application/json");
 
+#pragma warning disable CA1862
             var response = message.HttpMethod.ToUpperInvariant() == "PUT"
+#pragma warning restore CA1862
                 ? await httpClient.PutAsync(_apiEndpoint + message.UrlSuffix, jsonContent, cancellationToken)
                 : await httpClient.PostAsync(_apiEndpoint + message.UrlSuffix, jsonContent, cancellationToken);
 
