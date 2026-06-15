@@ -12,16 +12,19 @@ namespace KafkaToRestApiForwarder;
 public class KafkaConsumerService : BackgroundService
 {
     private readonly AutoOffsetReset _autoOffsetReset;
+
     private readonly string _bootstrapServers;
+    private readonly string _topic;
     private readonly string _consumerGroupId;
     private readonly string _deadLetterTopic;
     private readonly TimeSpan _idleLogInterval;
+    private readonly int _maxRetryAttempts;
+    private readonly TimeSpan _retryDelay;
+
     private readonly ILogger<KafkaConsumerService> _logger;
     private readonly KafkaMessageParser _messageParser;
-    private readonly int _maxRetryAttempts;
+
     private readonly IRestApiForwarder _restApiForwarder;
-    private readonly TimeSpan _retryDelay;
-    private readonly string _topic;
 
     public KafkaConsumerService(
         IOptions<KafkaConsumerSettings> kafkaConsumerSettings,
@@ -30,31 +33,47 @@ public class KafkaConsumerService : BackgroundService
         IRestApiForwarder restApiForwarder,
         ILogger<KafkaConsumerService> logger)
     {
+        // Kafka consumer settings
         var consumerSettings = kafkaConsumerSettings.Value;
-        var deliverySettings = kafkaMessageDeliverySettings.Value;
-
         _bootstrapServers = consumerSettings.BootstrapServers;
         _topic = consumerSettings.Topic;
         _consumerGroupId = consumerSettings.ConsumerGroupId;
         _deadLetterTopic = consumerSettings.DeadLetterTopic;
-        _idleLogInterval = TimeSpan.FromSeconds(Math.Max(5, consumerSettings.IdleLogIntervalInSeconds));
         _autoOffsetReset = consumerSettings.AutoOffsetResetEarliest
             ? AutoOffsetReset.Earliest
             : AutoOffsetReset.Latest;
+        _idleLogInterval = TimeSpan.FromSeconds(
+            Math.Max(5, consumerSettings.IdleLogIntervalInSeconds));
 
+        // Kafka message delivery settings
+        var deliverySettings = kafkaMessageDeliverySettings.Value;
         _maxRetryAttempts = Math.Max(1, deliverySettings.MaxRetryAttempts);
-        _retryDelay = TimeSpan.FromSeconds(Math.Max(0, deliverySettings.RetryDelayInSeconds));
+        _retryDelay = TimeSpan.FromSeconds(
+            Math.Max(0, deliverySettings.RetryDelayInSeconds));
 
         _messageParser = messageParser;
         _restApiForwarder = restApiForwarder;
         _logger = logger;
 
         _logger.LogInformation(
-            "Consumer service parameters initialized: BootstrapServers \"{BootstrapServers}\" Topic \"{Topic}\" ConsumerGroupId \"{ConsumerGroupId}\" DeadLetterTopic \"{DeadLetterTopic}\" MaxRetryAttempts {MaxAttempts} RetryDelaySeconds {RetryDelay}",
-            _bootstrapServers, _topic, _consumerGroupId, _deadLetterTopic, _maxRetryAttempts,
+            """
+            Consumer service parameters initialized:
+              BootstrapServers "{BootstrapServers}"
+              Topic "{Topic}"
+              ConsumerGroupId "{ConsumerGroupId}"
+              DeadLetterTopic "{DeadLetterTopic}"
+              MaxRetryAttempts {MaxAttempts}
+              RetryDelaySeconds {RetryDelay}
+            """,
+            _bootstrapServers,
+            _topic,
+            _consumerGroupId,
+            _deadLetterTopic,
+            _maxRetryAttempts,
             _retryDelay.TotalSeconds);
     }
 
+    // ReSharper disable CognitiveComplexity
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var consumerConfig = new ConsumerConfig
@@ -66,20 +85,22 @@ public class KafkaConsumerService : BackgroundService
             EnableAutoOffsetStore = false
         };
 
-        var producerConfig = new ProducerConfig
+        var deadLetterProducerConfig = new ProducerConfig
         {
             BootstrapServers = _bootstrapServers
         };
 
+        // Ensure topics exist before starting to consume messages
         await CreateTopicsIfMissingAsync(stoppingToken);
+        _logger.LogInformation("Kafka topics verified/created successfully.");
 
-        using var consumer = new ConsumerBuilder<string, string>(consumerConfig)
-            .SetErrorHandler((_, error) => _logger.LogError("Kafka consumer error: {Reason}", error.Reason))
-            .Build();
-        using var deadLetterProducer = new ProducerBuilder<string, string>(producerConfig)
-            .SetErrorHandler((_, error) => _logger.LogError("Kafka producer error: {Reason}", error.Reason))
-            .Build();
 
+        // Create consumer and producer instances
+        using var consumer = CreateConsumer(consumerConfig);
+        using var deadLetterProducer = CreateDeadLetterProducer(deadLetterProducerConfig);
+        _logger.LogInformation("Kafka consumer and dead-letter producer instances created successfully.");
+
+        // Subscribe to the main topic
         consumer.Subscribe(_topic);
         _logger.LogInformation("Kafka consumer started. Topic \"{Topic}\"", _topic);
 
@@ -113,12 +134,12 @@ public class KafkaConsumerService : BackgroundService
                             _topic, _consumerGroupId);
                         nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
                     }
-
                     continue;
                 }
+                _logger.LogInformation("Kafka consumer received a message on offset: {TopicPartitionOffset}. Processing it...", consumeResult.TopicPartitionOffset);
+                await ProcessConsumerResultAsync(consumer, deadLetterProducer, consumeResult, stoppingToken);
 
                 nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
-                await ProcessConsumerResultAsync(consumer, deadLetterProducer, consumeResult, stoppingToken);
             }
         }
         catch (OperationCanceledException)
@@ -131,6 +152,7 @@ public class KafkaConsumerService : BackgroundService
             consumer.Close();
         }
     }
+    // ReSharper restore CognitiveComplexity
 
     private async Task CreateTopicsIfMissingAsync(CancellationToken cancellationToken)
     {
@@ -167,6 +189,22 @@ public class KafkaConsumerService : BackgroundService
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private IConsumer<string, string> CreateConsumer(ConsumerConfig consumerConfig)
+    {
+        return new ConsumerBuilder<string, string>(consumerConfig)
+            .SetErrorHandler((_, error) =>
+                _logger.LogError("Kafka consumer error: {Reason}", error.Reason))
+            .Build();
+    }
+
+    private IProducer<string, string> CreateDeadLetterProducer(ProducerConfig producerConfig)
+    {
+        return new ProducerBuilder<string, string>(producerConfig)
+            .SetErrorHandler((_, error) =>
+                _logger.LogError("Kafka producer error: {Reason}", error.Reason))
+            .Build();
     }
 
     private async Task ProcessConsumerResultAsync(
@@ -221,7 +259,15 @@ public class KafkaConsumerService : BackgroundService
     {
         for (var attempt = 1; attempt <= _maxRetryAttempts; attempt++)
         {
-            var result = await ProcessMessageAsync(forwardingMessage, attempt, cancellationToken);
+            _logger.LogInformation(
+                """
+                Forwarding the Kafka message (Attempt {Attempt}/{MaxAttempts}) to the REST API:
+                \"{Method}\", suffix \"{Suffix}\". UpdateDate: {UpdateDate:o}
+                """,
+                attempt, _maxRetryAttempts,
+                forwardingMessage.HttpMethod, forwardingMessage.UrlSuffix, forwardingMessage.UpdateDate);
+
+            var result = await _restApiForwarder.ForwardAsync(forwardingMessage, cancellationToken);
 
             if (result.Success || attempt >= _maxRetryAttempts)
             {
