@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
 
-namespace KafkaToRestApiForwarder;
+namespace KafkaToRestApiForwarder.RestApi;
 
 [SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging")]
 public class GitHubCodespaceAwaker(

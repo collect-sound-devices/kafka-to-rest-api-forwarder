@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Microsoft.Extensions.Options;
 
-namespace KafkaToRestApiForwarder;
+namespace KafkaToRestApiForwarder.RestApi;
 
 [SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging")]
 public sealed class RestApiForwarder : IRestApiForwarder

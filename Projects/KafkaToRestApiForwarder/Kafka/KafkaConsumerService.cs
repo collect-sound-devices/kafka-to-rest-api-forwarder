@@ -3,10 +3,11 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
+using KafkaToRestApiForwarder.RestApi;
 using Microsoft.Extensions.Options;
-using static KafkaToRestApiForwarder.Contracts.MessageFields;
+using static KafkaToRestApiForwarder.Contracts.MessagePayloadFields;
 
-namespace KafkaToRestApiForwarder;
+namespace KafkaToRestApiForwarder.Kafka;
 
 [SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging")]
 public class KafkaConsumerService : BackgroundService
@@ -308,18 +309,6 @@ public class KafkaConsumerService : BackgroundService
             logPayload.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 
         return forwardingMessage;
-    }
-
-    private async Task<ForwardingResult> ProcessMessageAsync(
-        ForwardingMessage message,
-        int attempt,
-        CancellationToken cancellationToken)
-    {
-        _logger.LogInformation(
-            "Processing Kafka message (Attempt {Attempt}/{MaxAttempts}): \"{Method}\", suffix \"{Suffix}\". UpdateDate: {UpdateDate:o}",
-            attempt, _maxRetryAttempts, message.HttpMethod, message.UrlSuffix, message.UpdateDate);
-
-        return await _restApiForwarder.ForwardAsync(message, cancellationToken);
     }
 
     private async Task PublishToDeadLetterTopicAsync(

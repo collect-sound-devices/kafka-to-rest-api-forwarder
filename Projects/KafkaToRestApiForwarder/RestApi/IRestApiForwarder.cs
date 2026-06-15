@@ -1,4 +1,4 @@
-namespace KafkaToRestApiForwarder;
+namespace KafkaToRestApiForwarder.RestApi;
 
 public interface IRestApiForwarder
 {
