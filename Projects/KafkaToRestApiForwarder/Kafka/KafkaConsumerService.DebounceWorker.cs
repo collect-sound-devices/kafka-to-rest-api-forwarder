@@ -50,9 +50,6 @@ public partial class KafkaConsumerService
             eventName);
         await TryForwardOrPublishToDeadLetterAsync(deadLetterProducer, consumeResult, ct);
         CommitProcessedMessage(consumer, consumeResult);
-        _logger.LogInformation(
-            "Kafka message commited om TopicPartitionOffset {TopicPartitionOffset}.",
-            consumeResult.TopicPartitionOffset);
     }
 
     private void IgnoreDebouncedMessage(string eventName, IConsumer<string, string> consumer, ConsumeResult<string, string> consumeResult)
@@ -61,9 +58,6 @@ public partial class KafkaConsumerService
             "Debouncing chosen {EventName} message to be IGNORED",
             eventName);
         CommitProcessedMessage(consumer, consumeResult);
-        _logger.LogInformation(
-            "Kafka message commited om TopicPartitionOffset {TopicPartitionOffset}.",
-            consumeResult.TopicPartitionOffset);
     }
 
     private sealed class DebounceWorker

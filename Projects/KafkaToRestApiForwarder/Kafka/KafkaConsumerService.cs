@@ -225,28 +225,6 @@ public partial class KafkaConsumerService : BackgroundService
             .Build();
     }
 
-    private async Task<bool> CheckAndPossiblyEnqueueToDebouncerAsync(
-        DeviceEventType deviceEventType,
-        ConsumeResult<string, string> consumeResult,
-        CancellationToken _)
-    {
-        var debouncer = deviceEventType switch
-        {
-            DeviceEventType.VolumeRenderChanged => _renderDebouncer,
-            DeviceEventType.VolumeCaptureChanged => _captureDebouncer,
-            _ => null
-        };
-
-        if (debouncer == null)
-        {
-            return false;
-        }
-
-        await debouncer.EnqueueAsync(consumeResult);
-        return true;
-    }
-
-
 
     private async Task ProcessConsumerResultAsync(
         IConsumer<string, string> consumer,
@@ -268,40 +246,45 @@ public partial class KafkaConsumerService : BackgroundService
             return;
         }
 
-        if (!await CheckAndPossiblyEnqueueToDebouncerAsync(forwardingMessage.DeviceEventType, consumeResult, cancellationToken))
+        var debouncerInCharge = forwardingMessage.DeviceEventType switch
+        {
+            DeviceEventType.VolumeRenderChanged => _renderDebouncer,
+            DeviceEventType.VolumeCaptureChanged => _captureDebouncer,
+            _ => null
+        };
+
+        if (debouncerInCharge == null)
         {
             await TryForwardOrPublishToDeadLetterAsync(deadLetterProducer, consumeResult, cancellationToken);
+            CommitProcessedMessage(consumer, consumeResult);
+            return;
         }
-
-
-        CommitProcessedMessage(consumer, consumeResult);
-        _logger.LogInformation(
-            "Kafka message commited om TopicPartitionOffset {TopicPartitionOffset}.",
-            consumeResult.TopicPartitionOffset);
-
+        await debouncerInCharge.EnqueueAsync(consumeResult);
     }
 
+    // ReSharper disable once MemberCanBeMadeStatic.Local
     private async Task TryForwardOrPublishToDeadLetterAsync(IProducer<string, string> deadLetterProducer, ConsumeResult<string, string> consumeResult,
         CancellationToken cancellationToken)
     {
-        ForwardingResult result;
+        ForwardingMessage forwardingMessage;
         try
         {
-            result = await ForwardWithRetriesAsync(ParsePendingMessage(consumeResult), cancellationToken);
+            forwardingMessage = ParsePendingMessage(consumeResult);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             var reason = $"Unexpected Kafka message processing failure: {ex.Message}";
             _logger.LogError(ex, "{Reason}. Moving message to dead-letter topic.", reason);
             await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, reason, cancellationToken);
-
-            result = new ForwardingResult(false, reason);
+            return;
         }
+
+        var result = await ForwardWithRetriesAsync(forwardingMessage, cancellationToken);
 
         if (!result.Success)
         {
             _logger.LogError(
-                "All attempt to deliver a Kafka message to REST API server failed. Moving message to dead-letter topic. Reason: {Reason}.",
+                "Deliver a Kafka message to REST API server failed. Moving message to dead-letter topic. Reason: {Reason}.",
                 result.ErrorReason);
             await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, result.ErrorReason,
                 cancellationToken);
@@ -386,10 +369,14 @@ public partial class KafkaConsumerService : BackgroundService
         {
             consumer.StoreOffset(consumeResult);
             consumer.Commit(consumeResult);
+            _logger.LogInformation(
+                "Kafka message commited on TopicPartitionOffset {TopicPartitionOffset}.",
+                consumeResult.TopicPartitionOffset);
         }
         catch (KafkaException ex)
         {
-            _logger.LogError(ex, "Failed to commit Kafka offset {TopicPartitionOffset}", consumeResult.TopicPartitionOffset);
+            _logger.LogError(ex, "Failed to commit Kafka offset {TopicPartitionOffset}",
+                consumeResult.TopicPartitionOffset);
             throw;
         }
     }
