@@ -68,7 +68,7 @@ rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
 - KafkaToRestApiForwarder runs in a Docker container on the same machine.
 - It reads the events from a local Kafka topic and POSTs/PUTs to the configured API base URL.
 - It applies debouncing of frequent volume-change PUT-requests.
-  * The respective time window is configurable via `Kafka:MessageDelivery:VolumeChangeEventDebouncingWindowInMilliseconds`.
+  * The respective time window is configurable via `Kafka:Consumer:VolumeChangeEventDebouncingWindowInMilliseconds`.
 - It guarantees reliable delivery with delayed retries
   * It retries failed API calls before committing the consumed Kafka offset.
   * It tries to awake the API if configured.  
@@ -116,6 +116,7 @@ rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
     ```
 
 ## Changelog
+- 2026-06-16: Debouncing of frequent volume-change PUT-requests 
 - 2026-06-03: Extra API service is used to start an Audio Repository API Codespace 
 - 2026-05-25: Initialized as alternative to RabbitMQ-to-REST-API-Farwarder
 
