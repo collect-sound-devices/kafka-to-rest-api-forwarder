@@ -10,13 +10,13 @@ public record KafkaConsumerSettings
     public string DeadLetterTopic { get; init; } = "audio-device-events.failed";
     public bool AutoOffsetResetEarliest { get; init; } = true;
     public int IdleLogIntervalInSeconds { get; init; } = 30;
+    // Debouncing interval for VolumeRenderChanged/VolumeCaptureChanged events (milliseconds)
+    public int VolumeChangeEventDebouncingWindowInMilliseconds { get; init; } = 400;
 }
 
 public record KafkaMessageDeliverySettings
 {
     public int MaxRetryAttempts { get; init; } = 5;
     public int RetryDelayInSeconds { get; init; } = 10;
-    // Debouncing interval for VolumeRenderChanged/VolumeCaptureChanged events (milliseconds)
-    public int VolumeChangeEventDebouncingWindowInMilliseconds { get; init; } = 400;
 }
 // ReSharper restore AutoPropertyCanBeMadeGetOnly.Global

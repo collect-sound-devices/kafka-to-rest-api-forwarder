@@ -1,16 +1,17 @@
+using Confluent.Kafka;
+using Confluent.Kafka.Admin;
+using KafkaToRestApiForwarder.Contracts;
+using KafkaToRestApiForwarder.RestApi;
+using Microsoft.Extensions.Options;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Confluent.Kafka;
-using Confluent.Kafka.Admin;
-using KafkaToRestApiForwarder.RestApi;
-using Microsoft.Extensions.Options;
 using static KafkaToRestApiForwarder.Contracts.MessagePayloadFields;
 
 namespace KafkaToRestApiForwarder.Kafka;
 
 [SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging")]
-public class KafkaConsumerService : BackgroundService
+public partial class KafkaConsumerService : BackgroundService
 {
     private readonly AutoOffsetReset _autoOffsetReset;
 
@@ -19,6 +20,7 @@ public class KafkaConsumerService : BackgroundService
     private readonly string _consumerGroupId;
     private readonly string _deadLetterTopic;
     private readonly TimeSpan _idleLogInterval;
+    private readonly TimeSpan _volumeChangeEventDebouncingWindow;
     private readonly int _maxRetryAttempts;
     private readonly TimeSpan _retryDelay;
 
@@ -45,6 +47,8 @@ public class KafkaConsumerService : BackgroundService
             : AutoOffsetReset.Latest;
         _idleLogInterval = TimeSpan.FromSeconds(
             Math.Max(5, consumerSettings.IdleLogIntervalInSeconds));
+        _volumeChangeEventDebouncingWindow = TimeSpan.FromMilliseconds(
+            Math.Max(100, consumerSettings.VolumeChangeEventDebouncingWindowInMilliseconds));
 
         // Kafka message delivery settings
         var deliverySettings = kafkaMessageDeliverySettings.Value;
@@ -97,9 +101,19 @@ public class KafkaConsumerService : BackgroundService
 
 
         // Create consumer and producer instances
-        using var consumer = CreateConsumer(consumerConfig);
-        using var deadLetterProducer = CreateDeadLetterProducer(deadLetterProducerConfig);
+        var consumer = CreateConsumer(consumerConfig);
+        var deadLetterProducer = CreateDeadLetterProducer(deadLetterProducerConfig);
         _logger.LogInformation("Kafka consumer and dead-letter producer instances created successfully.");
+
+        InitializeDebouncers(
+            (
+                nameof(DeviceEventType.VolumeRenderChanged), nameof(DeviceEventType.VolumeCaptureChanged)),
+            consumer,
+            deadLetterProducer,
+            _volumeChangeEventDebouncingWindow,
+            stoppingToken
+        );
+
 
         // Subscribe to the main topic
         consumer.Subscribe(_topic);
@@ -138,6 +152,7 @@ public class KafkaConsumerService : BackgroundService
                     continue;
                 }
                 _logger.LogInformation("Kafka consumer received a message on offset: {TopicPartitionOffset}. Processing it...", consumeResult.TopicPartitionOffset);
+
                 await ProcessConsumerResultAsync(consumer, deadLetterProducer, consumeResult, stoppingToken);
 
                 nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
@@ -149,8 +164,10 @@ public class KafkaConsumerService : BackgroundService
         }
         finally
         {
-            _logger.LogInformation("Closing Kafka consumer.");
-            consumer.Close();
+            WaitForStopDebouncers();
+            _logger.LogInformation("Closing Kafka consumer and dead-letter producer.");
+            deadLetterProducer.Dispose();
+            consumer.Dispose();
         }
     }
     // ReSharper restore CognitiveComplexity
@@ -208,6 +225,29 @@ public class KafkaConsumerService : BackgroundService
             .Build();
     }
 
+    private async Task<bool> CheckAndPossiblyEnqueueToDebouncerAsync(
+        DeviceEventType deviceEventType,
+        ConsumeResult<string, string> consumeResult,
+        CancellationToken _)
+    {
+        var debouncer = deviceEventType switch
+        {
+            DeviceEventType.VolumeRenderChanged => _renderDebouncer,
+            DeviceEventType.VolumeCaptureChanged => _captureDebouncer,
+            _ => null
+        };
+
+        if (debouncer == null)
+        {
+            return false;
+        }
+
+        await debouncer.EnqueueAsync(consumeResult);
+        return true;
+    }
+
+
+
     private async Task ProcessConsumerResultAsync(
         IConsumer<string, string> consumer,
         IProducer<string, string> deadLetterProducer,
@@ -223,35 +263,49 @@ public class KafkaConsumerService : BackgroundService
         {
             var reason = $"Invalid Kafka message payload: {ex.Message}";
             _logger.LogError(ex, "{Reason}. Moving message to dead-letter topic.", reason);
-            await DeadLetterAndCommitAsync(consumer, deadLetterProducer, consumeResult, reason, cancellationToken);
+            await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, reason, cancellationToken);
+            CommitProcessedMessage(consumer, consumeResult);
             return;
         }
 
+        if (!await CheckAndPossiblyEnqueueToDebouncerAsync(forwardingMessage.DeviceEventType, consumeResult, cancellationToken))
+        {
+            await TryForwardOrPublishToDeadLetterAsync(deadLetterProducer, consumeResult, cancellationToken);
+        }
+
+
+        CommitProcessedMessage(consumer, consumeResult);
+        _logger.LogInformation(
+            "Kafka message commited om TopicPartitionOffset {TopicPartitionOffset}.",
+            consumeResult.TopicPartitionOffset);
+
+    }
+
+    private async Task TryForwardOrPublishToDeadLetterAsync(IProducer<string, string> deadLetterProducer, ConsumeResult<string, string> consumeResult,
+        CancellationToken cancellationToken)
+    {
         ForwardingResult result;
         try
         {
-            result = await ForwardWithRetriesAsync(forwardingMessage, cancellationToken);
+            result = await ForwardWithRetriesAsync(ParsePendingMessage(consumeResult), cancellationToken);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             var reason = $"Unexpected Kafka message processing failure: {ex.Message}";
             _logger.LogError(ex, "{Reason}. Moving message to dead-letter topic.", reason);
-            await DeadLetterAndCommitAsync(consumer, deadLetterProducer, consumeResult, reason, cancellationToken);
-            return;
+            await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, reason, cancellationToken);
+
+            result = new ForwardingResult(false, reason);
         }
 
-        if (result.Success)
+        if (!result.Success)
         {
-            CommitProcessedMessage(consumer, consumeResult);
-            _logger.LogInformation(
-                "Kafka message commited successfully om TopicPartitionOffset {TopicPartitionOffset}.",
-                consumeResult.TopicPartitionOffset);
-            return;
+            _logger.LogError(
+                "All attempt to deliver a Kafka message to REST API server failed. Moving message to dead-letter topic. Reason: {Reason}.",
+                result.ErrorReason);
+            await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, result.ErrorReason,
+                cancellationToken);
         }
-
-        _logger.LogError(
-            "All attempt to deliver a Kafka message to REST API server failed. Moving message to dead-letter topic. Reason: {Reason}.", result.ErrorReason);
-        await DeadLetterAndCommitAsync(consumer, deadLetterProducer, consumeResult, result.ErrorReason, cancellationToken);
     }
 
     private async Task<ForwardingResult> ForwardWithRetriesAsync(
@@ -282,17 +336,6 @@ public class KafkaConsumerService : BackgroundService
         }
 
         throw new InvalidOperationException("Retry loop completed without a forwarding result.");
-    }
-
-    private async Task DeadLetterAndCommitAsync(
-        IConsumer<string, string> consumer,
-        IProducer<string, string> deadLetterProducer,
-        ConsumeResult<string, string> consumeResult,
-        string? reason,
-        CancellationToken cancellationToken)
-    {
-        await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, reason, cancellationToken);
-        CommitProcessedMessage(consumer, consumeResult);
     }
 
     private ForwardingMessage ParsePendingMessage(ConsumeResult<string, string> consumeResult)
