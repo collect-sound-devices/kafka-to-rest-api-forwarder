@@ -1,5 +1,6 @@
 using System.Text.Json;
 using KafkaToRestApiForwarder.Contracts;
+using KafkaToRestApiForwarder.Kafka;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
@@ -7,7 +8,7 @@ namespace KafkaToRestApiForwarder.Tests;
 
 public class KafkaMessageParserTests
 {
-    private readonly KafkaMessageParser _sut = new KafkaMessageParser(Substitute.For<ILogger<KafkaMessageParser>>());
+    private readonly KafkaMessageParser _sut = new(Substitute.For<ILogger<KafkaMessageParser>>());
 
     [Test]
     public void Parse_WhenMessageIsValid_ReturnsForwardingMessage()
@@ -24,12 +25,14 @@ public class KafkaMessageParserTests
 
         var message = _sut.Parse(body);
 
-        Assert.That(message.Body, Is.EqualTo(body));
-        Assert.That(message.HttpMethod, Is.EqualTo("POST"));
-        Assert.That(message.UrlSuffix, Is.EqualTo("/manual"));
-        Assert.That(message.DeviceEventType, Is.EqualTo(MessageFields.DeviceEventType.Discovered));
-        Assert.That(message.UpdateDate, Is.EqualTo(new DateTime(2026, 5, 26, 10, 0, 0, DateTimeKind.Utc)));
-        Assert.That(message.Payload["name"]?.GetValue<string>(), Is.EqualTo("Manual Kafka Test Device"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.HttpMethod, Is.EqualTo("POST"));
+            Assert.That(message.UrlSuffix, Is.EqualTo("/manual"));
+            Assert.That(message.DeviceEventType, Is.EqualTo(DeviceEventType.Discovered));
+            Assert.That(message.UpdateDate, Is.EqualTo(new DateTime(2026, 5, 26, 10, 0, 0, DateTimeKind.Utc)));
+            Assert.That(message.Payload["name"]?.GetValue<string>(), Is.EqualTo("Manual Kafka Test Device"));
+        }
     }
 
     [Test]
@@ -45,7 +48,7 @@ public class KafkaMessageParserTests
 
         var message = _sut.Parse(body);
 
-        Assert.That(message.DeviceEventType, Is.EqualTo(MessageFields.DeviceEventType.Confirmed));
+        Assert.That(message.DeviceEventType, Is.EqualTo(DeviceEventType.Confirmed));
     }
 
     [Test]

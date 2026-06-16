@@ -4,9 +4,8 @@ using KafkaToRestApiForwarder.Contracts;
 namespace KafkaToRestApiForwarder;
 
 public sealed record ForwardingMessage(
-    string Body,
     string? HttpMethod,
     string? UrlSuffix,
-    MessageFields.DeviceEventType DeviceEventType,
+    DeviceEventType DeviceEventType,
     DateTime UpdateDate,
     JsonObject Payload);

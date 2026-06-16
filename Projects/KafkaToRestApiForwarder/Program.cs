@@ -1,6 +1,7 @@
 using NLog;
 using NLog.Extensions.Logging;
-using KafkaToRestApiForwarder;
+using KafkaToRestApiForwarder.Kafka;
+using KafkaToRestApiForwarder.RestApi;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 var builder = Host.CreateDefaultBuilder(args)

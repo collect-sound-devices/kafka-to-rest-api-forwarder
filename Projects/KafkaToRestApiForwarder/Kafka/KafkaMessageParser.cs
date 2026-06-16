@@ -1,9 +1,10 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using static KafkaToRestApiForwarder.Contracts.MessageFields;
+using KafkaToRestApiForwarder.Contracts;
+using static KafkaToRestApiForwarder.Contracts.MessagePayloadFields;
 
-namespace KafkaToRestApiForwarder;
+namespace KafkaToRestApiForwarder.Kafka;
 
 [SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging")]
 public sealed class KafkaMessageParser(ILogger<KafkaMessageParser> logger)
@@ -15,11 +16,9 @@ public sealed class KafkaMessageParser(ILogger<KafkaMessageParser> logger)
 
         var deviceEventType = GetDeviceEventType(payload);
         var updateDate = GetUpdateDate(payload);
-        logger.LogInformation("Parsed Kafka event payload of tyoe: {DeviceEventType}, generated at: {UpdateDate}.", deviceEventType, updateDate);
+        logger.LogInformation("Parsed Kafka event payload of type {DeviceEventType}, generated at: {UpdateDate}.", deviceEventType, updateDate);
 
-        return new ForwardingMessage(
-            body,
-            payload[HttpRequest]?.GetValue<string>(),
+        return new ForwardingMessage(payload[HttpRequest]?.GetValue<string>(),
             payload[UrlSuffix]?.GetValue<string>(),
             deviceEventType,
             updateDate,
