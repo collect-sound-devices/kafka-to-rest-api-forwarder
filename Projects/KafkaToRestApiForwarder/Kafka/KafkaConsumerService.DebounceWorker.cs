@@ -46,7 +46,7 @@ public partial class KafkaConsumerService
         ConsumeResult<string, string> consumeResult, CancellationToken ct)
     {
         _logger.LogInformation(
-            "Debouncing chosen {message.} message to be PROCESSED",
+            "Debouncing chosen {message} message to be PROCESSED",
             eventName);
         await TryForwardOrPublishToDeadLetterAsync(deadLetterProducer, consumeResult, ct);
         CommitProcessedMessage(consumer, consumeResult);
