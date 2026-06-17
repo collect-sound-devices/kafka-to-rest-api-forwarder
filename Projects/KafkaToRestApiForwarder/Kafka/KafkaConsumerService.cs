@@ -235,7 +235,7 @@ public partial class KafkaConsumerService : BackgroundService
         ForwardingMessage forwardingMessage;
         try
         {
-            forwardingMessage = ParsePendingMessage(consumeResult);
+            forwardingMessage = ParseToForwardingMessage(consumeResult);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -269,7 +269,7 @@ public partial class KafkaConsumerService : BackgroundService
         ForwardingMessage forwardingMessage;
         try
         {
-            forwardingMessage = ParsePendingMessage(consumeResult);
+            forwardingMessage = ParseToForwardingMessage(consumeResult);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -321,18 +321,19 @@ public partial class KafkaConsumerService : BackgroundService
         throw new InvalidOperationException("Retry loop completed without a forwarding result.");
     }
 
-    private ForwardingMessage ParsePendingMessage(ConsumeResult<string, string> consumeResult)
+    private ForwardingMessage ParseToForwardingMessage(ConsumeResult<string, string> consumeResult)
     {
-        var forwardingMessage = _messageParser.Parse(consumeResult.Message.Value);
-
         var logPayload = JsonNode.Parse(consumeResult.Message.Value)!.AsObject();
-        logPayload.Remove(HttpRequest);
-        logPayload.Remove(UrlSuffix);
 
         _logger.LogInformation(
-            "Received Kafka message: TopicPartitionOffset {TopicPartitionOffset}, device event type {DeviceEventType}, HTTP request \"{Method}\", suffix \"{Suffix}\", payload:\n{Payload}",
-            consumeResult.TopicPartitionOffset, forwardingMessage.DeviceEventType, forwardingMessage.HttpMethod, forwardingMessage.UrlSuffix,
+            """
+            Received Kafka message: TopicPartitionOffset {TopicPartitionOffset},
+            payload: "{Payload}"
+            """,
+            consumeResult.TopicPartitionOffset, 
             logPayload.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+        var forwardingMessage = _messageParser.Parse(consumeResult.Message.Value);
 
         return forwardingMessage;
     }
