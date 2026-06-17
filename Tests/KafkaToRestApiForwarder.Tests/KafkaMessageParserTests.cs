@@ -23,15 +23,15 @@ public class KafkaMessageParserTests
                             }
                             """;
 
-        var message = _sut.Parse(body);
+        var (httpMethod, urlSuffix, deviceEventType, updateDate, payload) = _sut.Parse(body);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(message.HttpMethod, Is.EqualTo("POST"));
-            Assert.That(message.UrlSuffix, Is.EqualTo("/manual"));
-            Assert.That(message.DeviceEventType, Is.EqualTo(DeviceEventType.Discovered));
-            Assert.That(message.UpdateDate, Is.EqualTo(new DateTime(2026, 5, 26, 10, 0, 0, DateTimeKind.Utc)));
-            Assert.That(message.Payload["name"]?.GetValue<string>(), Is.EqualTo("Manual Kafka Test Device"));
+            Assert.That(httpMethod, Is.EqualTo("POST"));
+            Assert.That(urlSuffix, Is.EqualTo("/manual"));
+            Assert.That(deviceEventType, Is.EqualTo(DeviceEventType.Discovered));
+            Assert.That(updateDate, Is.EqualTo(new DateTime(2026, 5, 26, 10, 0, 0, DateTimeKind.Utc)));
+            Assert.That(payload["name"]?.GetValue<string>(), Is.EqualTo("Manual Kafka Test Device"));
         }
     }
 
@@ -46,9 +46,9 @@ public class KafkaMessageParserTests
                             }
                             """;
 
-        var message = _sut.Parse(body);
+        var (_, _, deviceEventType, _, _) = _sut.Parse(body);
 
-        Assert.That(message.DeviceEventType, Is.EqualTo(DeviceEventType.Confirmed));
+        Assert.That(deviceEventType, Is.EqualTo(DeviceEventType.Confirmed));
     }
 
     [Test]
@@ -63,9 +63,9 @@ public class KafkaMessageParserTests
                             }
                             """;
 
-        var message = _sut.Parse(body);
+        var (_, _, _, updateDate, _) = _sut.Parse(body);
 
-        Assert.That(message.UpdateDate, Is.EqualTo(new DateTime(2026, 5, 26, 10, 0, 0, DateTimeKind.Utc)));
+        Assert.That(updateDate, Is.EqualTo(new DateTime(2026, 5, 26, 10, 0, 0, DateTimeKind.Utc)));
     }
 
     [Test]
@@ -79,9 +79,9 @@ public class KafkaMessageParserTests
                             }
                             """;
 
-        var message = _sut.Parse(body);
+        var (_, _, _, updateDate, _) = _sut.Parse(body);
 
-        Assert.That(message.UpdateDate, Is.EqualTo(DateTime.MinValue));
+        Assert.That(updateDate, Is.EqualTo(DateTime.MinValue));
     }
 
     [Test]

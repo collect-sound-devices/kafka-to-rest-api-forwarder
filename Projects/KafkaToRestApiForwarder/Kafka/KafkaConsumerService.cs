@@ -255,29 +255,18 @@ public partial class KafkaConsumerService : BackgroundService
 
         if (debouncerInCharge == null)
         {
-            await TryForwardOrPublishToDeadLetterAsync(deadLetterProducer, consumeResult, cancellationToken);
+            await TryForwardOrPublishToDeadLetterAsync(deadLetterProducer, forwardingMessage, cancellationToken);
             CommitProcessedMessage(consumer, consumeResult);
             return;
         }
-        await debouncerInCharge.EnqueueAsync(consumeResult);
+        await debouncerInCharge.EnqueueAsync(forwardingMessage);
     }
-
+    
+    // This method is not static because it uses _logger and other instance members.
     // ReSharper disable once MemberCanBeMadeStatic.Local
-    private async Task TryForwardOrPublishToDeadLetterAsync(IProducer<string, string> deadLetterProducer, ConsumeResult<string, string> consumeResult,
+    private async Task TryForwardOrPublishToDeadLetterAsync(IProducer<string, string> deadLetterProducer, ForwardingMessage forwardingMessage,
         CancellationToken cancellationToken)
     {
-        ForwardingMessage forwardingMessage;
-        try
-        {
-            forwardingMessage = ParseToForwardingMessage(consumeResult);
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
-        {
-            var reason = $"Unexpected Kafka message processing failure: {ex.Message}";
-            _logger.LogError(ex, "{Reason}. Moving message to dead-letter topic.", reason);
-            await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, reason, cancellationToken);
-            return;
-        }
 
         var result = await ForwardWithRetriesAsync(forwardingMessage, cancellationToken);
 
@@ -286,7 +275,7 @@ public partial class KafkaConsumerService : BackgroundService
             _logger.LogError(
                 "Deliver a Kafka message to REST API server failed. Moving message to dead-letter topic. Reason: {Reason}.",
                 result.ErrorReason);
-            await PublishToDeadLetterTopicAsync(deadLetterProducer, consumeResult, result.ErrorReason,
+            await PublishToDeadLetterTopicAsync(deadLetterProducer, forwardingMessage.ConsumeResult, result.ErrorReason,
                 cancellationToken);
         }
     }
@@ -333,7 +322,7 @@ public partial class KafkaConsumerService : BackgroundService
             consumeResult.TopicPartitionOffset, 
             logPayload.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 
-        var forwardingMessage = _messageParser.Parse(consumeResult.Message.Value);
+        var forwardingMessage = _messageParser.Parse(consumeResult);
 
         return forwardingMessage;
     }

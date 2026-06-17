@@ -35,50 +35,50 @@ public partial class KafkaConsumerService
         return new DebounceWorker(
             eventName,
             _volumeDebounceWindow,
-            (consumeResult, ct) => ProcessDebouncedMessageAsync(eventName, consumer, deadLetterProducer, consumeResult, ct),
-            (consumeResult) => IgnoreDebouncedMessage(eventName, consumer, consumeResult),
+            (message, ct) => ProcessDebouncedMessageAsync(eventName, consumer, deadLetterProducer, message, ct),
+            (message) => IgnoreDebouncedMessage(eventName, consumer, message),
             _logger,
             _messageParser,
             cancellationToken);
     }
 
     private async Task ProcessDebouncedMessageAsync(string eventName, IConsumer<string, string> consumer, IProducer<string, string> deadLetterProducer,
-        ConsumeResult<string, string> consumeResult, CancellationToken ct)
+        ForwardingMessage message, CancellationToken ct)
     {
         _logger.LogInformation(
             "Debouncing chosen {message} message to be PROCESSED",
             eventName);
-        await TryForwardOrPublishToDeadLetterAsync(deadLetterProducer, consumeResult, ct);
-        CommitProcessedMessage(consumer, consumeResult);
+        await TryForwardOrPublishToDeadLetterAsync(deadLetterProducer, message, ct);
+        CommitProcessedMessage(consumer, message.ConsumeResult);
     }
 
-    private void IgnoreDebouncedMessage(string eventName, IConsumer<string, string> consumer, ConsumeResult<string, string> consumeResult)
+    private void IgnoreDebouncedMessage(string eventName, IConsumer<string, string> consumer, ForwardingMessage message)
     {
         _logger.LogInformation(
             "Debouncing chosen {EventName} message to be IGNORED",
             eventName);
-        CommitProcessedMessage(consumer, consumeResult);
+        CommitProcessedMessage(consumer, message.ConsumeResult);
     }
 
     private sealed class DebounceWorker
     {
         private readonly string _name;
         private readonly TimeSpan _window;
-        private readonly Func<ConsumeResult<string, string>, CancellationToken, Task> _processMessageAsync;
-        private readonly Action<ConsumeResult<string, string>> _ignoreMessageAsync;
+        private readonly Func<ForwardingMessage, CancellationToken, Task> _processMessageAsync;
+        private readonly Action<ForwardingMessage> _ignoreMessageAsync;
         private readonly ILogger _logger;
         private readonly KafkaMessageParser _messageParser;
 
-        private readonly Channel<ConsumeResult<string, string>> _queue =
-            Channel.CreateUnbounded<ConsumeResult<string, string>>(new UnboundedChannelOptions
+        private readonly Channel<ForwardingMessage> _queue =
+            Channel.CreateUnbounded<ForwardingMessage>(new UnboundedChannelOptions
                 { SingleReader = true, SingleWriter = false });
 
         private readonly CancellationToken _stopToken;
         private readonly Task _workerTask;
 
         public DebounceWorker(string name, TimeSpan window,
-            Func<ConsumeResult<string, string>, CancellationToken, Task> processMessageAsync,
-            Action<ConsumeResult<string, string>> ignoreMessageAsync,
+            Func<ForwardingMessage, CancellationToken, Task> processMessageAsync,
+            Action<ForwardingMessage> ignoreMessageAsync,
             ILogger logger,
             KafkaMessageParser messageParser,
             CancellationToken stopToken)
@@ -98,13 +98,13 @@ public partial class KafkaConsumerService
             _workerTask.Wait(CancellationToken.None);
         }
 
-        public ValueTask EnqueueAsync(ConsumeResult<string, string> message)
+        public ValueTask EnqueueAsync(ForwardingMessage message)
         {
             return _queue.Writer.WriteAsync(message, _stopToken);
         }
-        private static async Task<ConsumeResult<string, string>?> GetNextMessageAsync(
-            ConsumeResult<string, string>? nextMessage,
-            ChannelReader<ConsumeResult<string, string>> reader,
+        private static async Task<ForwardingMessage?> GetNextMessageAsync(
+            ForwardingMessage? nextMessage,
+            ChannelReader<ForwardingMessage> reader,
             CancellationToken cancellationToken)
         {
             if (nextMessage != null)
@@ -121,39 +121,35 @@ public partial class KafkaConsumerService
             }
         }
 
-        private ConsumeResult<string, string>? ProcessDebounceWindow(
-                ConsumeResult<string, string> current,
-                ChannelReader<ConsumeResult<string, string>> reader)
+        private ForwardingMessage? ProcessDebounceWindow(
+                ForwardingMessage currentMessage,
+                ChannelReader<ForwardingMessage> reader)
         {
-            var latest = current;
-            var latestMessage = _messageParser.Parse(latest.Message.Value);
-            ConsumeResult<string, string>? next = null;
-            while (reader.TryRead(out var nextRead))
+            var latestMessage = currentMessage;
+            ForwardingMessage? nextMessage = null;
+            while (reader.TryRead(out var next))
             {
-                var nextMessage = _messageParser.Parse(nextRead.Message.Value);
-                if ((nextMessage.UpdateDate - latestMessage.UpdateDate) <= _window) // within the time window?
+                if ((next.UpdateDate - latestMessage.UpdateDate) <= _window) // within the time window?
                 {
                     try
                     {
-                        _ignoreMessageAsync(latest);
+                        _ignoreMessageAsync(latestMessage);
                     }
                     catch
                     {
                         // Ignored
                     }
-
-                    latest = nextRead; // keep the most recent within the window
+                    
+                    latestMessage = next; // keep the most recent within the window
                     continue;
                 }
-
                 // Next is outside the window; keep it for next iteration
-                next = nextRead;
+                nextMessage = next;
                 break;
             }
-
-            return next;
+            return nextMessage;
         }
-        private async Task ProcessMessageSafelyAsync(ConsumeResult<string, string> message)
+        private async Task ProcessMessageSafelyAsync(ForwardingMessage message)
         {
             try
             {
@@ -175,7 +171,7 @@ public partial class KafkaConsumerService
         private async Task RunAsync()
         {
             var reader = _queue.Reader;
-            ConsumeResult<string, string>? nextMessage = null;
+            ForwardingMessage? nextMessage = null;
             try
             {
                 while (!_stopToken.IsCancellationRequested)
