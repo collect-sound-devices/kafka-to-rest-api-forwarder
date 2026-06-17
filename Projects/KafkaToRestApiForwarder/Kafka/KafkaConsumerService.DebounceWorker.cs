@@ -38,7 +38,6 @@ public partial class KafkaConsumerService
             (message, ct) => ProcessDebouncedMessageAsync(eventName, consumer, deadLetterProducer, message, ct),
             (message) => IgnoreDebouncedMessage(eventName, consumer, message),
             _logger,
-            _messageParser,
             cancellationToken);
     }
 
@@ -67,7 +66,6 @@ public partial class KafkaConsumerService
         private readonly Func<ForwardingMessage, CancellationToken, Task> _processMessageAsync;
         private readonly Action<ForwardingMessage> _ignoreMessageAsync;
         private readonly ILogger _logger;
-        private readonly KafkaMessageParser _messageParser;
 
         private readonly Channel<ForwardingMessage> _queue =
             Channel.CreateUnbounded<ForwardingMessage>(new UnboundedChannelOptions
@@ -80,7 +78,6 @@ public partial class KafkaConsumerService
             Func<ForwardingMessage, CancellationToken, Task> processMessageAsync,
             Action<ForwardingMessage> ignoreMessageAsync,
             ILogger logger,
-            KafkaMessageParser messageParser,
             CancellationToken stopToken)
         {
             _name = name;
@@ -88,7 +85,6 @@ public partial class KafkaConsumerService
             _processMessageAsync = processMessageAsync;
             _ignoreMessageAsync = ignoreMessageAsync;
             _logger = logger;
-            _messageParser = messageParser;
             _stopToken = stopToken;
             _workerTask = Task.Run(RunAsync, stopToken);
         }
