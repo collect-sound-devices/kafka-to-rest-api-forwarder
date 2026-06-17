@@ -46,6 +46,7 @@ services:
       Kafka__Consumer__DeadLetterTopic: audio-device-events.failed
       Kafka__Consumer__AutoOffsetResetEarliest: true
       Kafka__Consumer__IdleLogIntervalInSeconds: 60
+      Kafka__Consumer__VolumeChangeEventDebouncingWindowInMilliseconds: 700
     depends_on:
       - kafka
     volumes:
