@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Confluent.Kafka;
 using KafkaToRestApiForwarder.Contracts;
 
 namespace KafkaToRestApiForwarder;
@@ -8,4 +9,5 @@ public sealed record ForwardingMessage(
     string? UrlSuffix,
     DeviceEventType DeviceEventType,
     DateTime UpdateDate,
-    JsonObject Payload);
+    JsonObject Payload,
+    ConsumeResult<string, string> ConsumeResult);
