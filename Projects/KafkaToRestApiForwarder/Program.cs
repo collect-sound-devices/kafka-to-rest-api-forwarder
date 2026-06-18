@@ -2,6 +2,7 @@ using NLog;
 using NLog.Extensions.Logging;
 using KafkaToRestApiForwarder.Kafka;
 using KafkaToRestApiForwarder.RestApi;
+using KafkaToRestApiForwarder.Utils;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 var builder = Host.CreateDefaultBuilder(args)
@@ -23,6 +24,9 @@ var builder = Host.CreateDefaultBuilder(args)
         services.Configure<KafkaMessageDeliverySettings>(config.GetSection("Kafka:MessageDelivery"));
         services.Configure<ApiBaseUrlSettings>(config.GetSection("ApiBaseUrl"));
         services.Configure<GitHubCodespaceSettings>(config.GetSection("GitHubCodespace"));
+
+        services.AddSingleton<IVersionProvider, VersionProvider>();
+        services.AddHostedService<VersionStartupLogger>();
 
         services.AddSingleton<KafkaMessageParser>();
         services.AddHttpClient();
