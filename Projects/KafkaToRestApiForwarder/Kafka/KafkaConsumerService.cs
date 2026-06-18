@@ -63,19 +63,21 @@ public partial class KafkaConsumerService : BackgroundService
         _logger.LogInformation(
             """
             Consumer service parameters initialized:
-              BootstrapServers "{BootstrapServers}"
-              Topic "{Topic}"
-              ConsumerGroupId "{ConsumerGroupId}"
-              DeadLetterTopic "{DeadLetterTopic}"
-              MaxRetryAttempts {MaxAttempts}
-              RetryDelaySeconds {RetryDelay}
+              Kafka server host:port (BootstrapServers): {BootstrapServers}
+              Kafka main topic: {Topic}
+              Kafka dead-letter topic: {DeadLetterTopic}
+              Kafka consumer group id: {ConsumerGroupId}
+              Max attempts for event's forwarding: {MaxAttempts}
+              Delay between forwarding attempts in seconds: {RetryDelay}
+              Volume-change-event debouncing window in milliseconds: {VolumeChangeEventDebouncingWindow}
             """,
             _bootstrapServers,
             _topic,
             _consumerGroupId,
             _deadLetterTopic,
             _maxRetryAttempts,
-            _retryDelay.TotalSeconds);
+            _retryDelay.TotalSeconds,
+            _volumeChangeEventDebouncingWindow);
     }
 
     // ReSharper disable CognitiveComplexity
@@ -119,6 +121,7 @@ public partial class KafkaConsumerService : BackgroundService
         consumer.Subscribe(_topic);
         _logger.LogInformation("Kafka consumer started. Topic \"{Topic}\"", _topic);
 
+        // consumer loop
         try
         {
             var nextIdleLogAt = DateTimeOffset.UtcNow + _idleLogInterval;
@@ -128,7 +131,7 @@ public partial class KafkaConsumerService : BackgroundService
                 ConsumeResult<string, string>? consumeResult;
                 try
                 {
-                    consumeResult = consumer.Consume(TimeSpan.FromSeconds(1));
+                    consumeResult = consumer.Consume(TimeSpan.FromMilliseconds(100));
                 }
                 catch (ConsumeException ex) when (ex.Error.Code == ErrorCode.UnknownTopicOrPart)
                 {
