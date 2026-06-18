@@ -73,11 +73,11 @@ public partial class KafkaConsumerService : BackgroundService
             """,
             _bootstrapServers,
             _topic,
-            _consumerGroupId,
             _deadLetterTopic,
+            _consumerGroupId,
             _maxRetryAttempts,
             _retryDelay.TotalSeconds,
-            _volumeChangeEventDebouncingWindow);
+            _volumeChangeEventDebouncingWindow.TotalMilliseconds);
     }
 
     // ReSharper disable CognitiveComplexity

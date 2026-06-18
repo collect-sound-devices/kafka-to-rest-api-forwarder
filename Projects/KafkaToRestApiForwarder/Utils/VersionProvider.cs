@@ -33,15 +33,29 @@ internal class VersionProvider : IVersionProvider
 
     private static string GetRuntimeDescription()
     {
-        var os = OperatingSystem.IsWindows() ? "Windows" :
-            OperatingSystem.IsLinux() ? "Linux" :
-            "Unknown OS";
+        var os = GetOsName();
 
         var cloud = DetectCloudEnvironment();
 
         var dotnetVersion = RuntimeInformation.FrameworkDescription;
 
         return $"{dotnetVersion} on {os}{(string.IsNullOrEmpty(cloud) ? "" : $" ({cloud})")} ";
+    }
+
+    private static string GetOsName()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return "Windows";
+        }
+
+        // ReSharper disable once ConvertIfStatementToReturnStatement
+        if (OperatingSystem.IsLinux())
+        {
+            return "Linux";
+        }
+
+        return "Unknown OS";
     }
 
     private static string DetectCloudEnvironment()
