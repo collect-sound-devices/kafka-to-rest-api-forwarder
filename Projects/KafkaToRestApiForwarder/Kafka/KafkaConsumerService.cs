@@ -131,7 +131,7 @@ public partial class KafkaConsumerService : BackgroundService
                 ConsumeResult<string, string>? consumeResult;
                 try
                 {
-                    consumeResult = consumer.Consume(TimeSpan.FromMilliseconds(100));
+                    consumeResult = consumer.Consume(TimeSpan.FromSeconds(1));
                 }
                 catch (ConsumeException ex) when (ex.Error.Code == ErrorCode.UnknownTopicOrPart)
                 {
