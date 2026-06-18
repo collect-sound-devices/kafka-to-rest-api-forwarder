@@ -35,13 +35,13 @@ public partial class KafkaConsumerService
         return new DebounceWorker(
             eventName,
             _volumeDebounceWindow,
-            (message, ct) => ProcessDebouncedMessageAsync(eventName, consumer, deadLetterProducer, message, ct),
+            (message, ct) => ForwardDebouncedMessageAsync(eventName, consumer, deadLetterProducer, message, ct),
             (message) => IgnoreDebouncedMessage(eventName, consumer, message),
             _logger,
             cancellationToken);
     }
 
-    private async Task ProcessDebouncedMessageAsync(string eventName, IConsumer<string, string> consumer, IProducer<string, string> deadLetterProducer,
+    private async Task ForwardDebouncedMessageAsync(string eventName, IConsumer<string, string> consumer, IProducer<string, string> deadLetterProducer,
         ForwardingMessage message, CancellationToken ct)
     {
         _logger.LogInformation(
@@ -62,27 +62,27 @@ public partial class KafkaConsumerService
     private sealed class DebounceWorker
     {
         private readonly string _name;
-        private readonly TimeSpan _window;
-        private readonly Func<ForwardingMessage, CancellationToken, Task> _processMessageAsync;
+        private readonly TimeSpan _debounceWindow;
+        private readonly Func<ForwardingMessage, CancellationToken, Task> _forwardMessageAsync;
         private readonly Action<ForwardingMessage> _ignoreMessageAsync;
         private readonly ILogger _logger;
 
         private readonly Channel<ForwardingMessage> _queue =
             Channel.CreateUnbounded<ForwardingMessage>(new UnboundedChannelOptions
-                { SingleReader = true, SingleWriter = false });
+            { SingleReader = true, SingleWriter = false });
 
         private readonly CancellationToken _stopToken;
         private readonly Task _workerTask;
 
         public DebounceWorker(string name, TimeSpan window,
-            Func<ForwardingMessage, CancellationToken, Task> processMessageAsync,
+            Func<ForwardingMessage, CancellationToken, Task> forwardMessageAsync,
             Action<ForwardingMessage> ignoreMessageAsync,
             ILogger logger,
             CancellationToken stopToken)
         {
             _name = name;
-            _window = window;
-            _processMessageAsync = processMessageAsync;
+            _debounceWindow = window;
+            _forwardMessageAsync = forwardMessageAsync;
             _ignoreMessageAsync = ignoreMessageAsync;
             _logger = logger;
             _stopToken = stopToken;
@@ -98,94 +98,80 @@ public partial class KafkaConsumerService
         {
             return _queue.Writer.WriteAsync(message, _stopToken);
         }
-        private static async Task<ForwardingMessage?> GetNextMessageAsync(
-            ForwardingMessage? nextMessage,
-            ChannelReader<ForwardingMessage> reader,
-            CancellationToken cancellationToken)
-        {
-            if (nextMessage != null)
-            {
-                return nextMessage;
-            }
-            try
-            {
-                return await reader.ReadAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                return null; // Signal to break the loop
-            }
-        }
 
-        private ForwardingMessage? ProcessDebounceWindow(
-                ForwardingMessage currentMessage,
-                ChannelReader<ForwardingMessage> reader)
+        private (ForwardingMessage messageToForward, ForwardingMessage? firstMessageAfterWindow) ChooseMessageToForward(
+            ForwardingMessage firstMessageInWindow,
+            ChannelReader<ForwardingMessage> reader)
         {
-            var latestMessage = currentMessage;
-            ForwardingMessage? nextMessage = null;
-            while (reader.TryRead(out var next))
+            var messageToForward = firstMessageInWindow;
+            ForwardingMessage? firstMessageAfterWindow = null;
+            while (reader.TryRead(out var candidateMessage))
             {
-                if ((next.UpdateDate - latestMessage.UpdateDate) <= _window) // within the time window?
+                if ((candidateMessage.UpdateDate - messageToForward.UpdateDate) <= _debounceWindow) // within the time window?
                 {
                     try
                     {
-                        _ignoreMessageAsync(latestMessage);
+                        _ignoreMessageAsync(messageToForward);
                     }
                     catch
                     {
                         // Ignored
                     }
-                    
-                    latestMessage = next; // keep the most recent within the window
+
+                    messageToForward = candidateMessage; // keep the most recent within the window
                     continue;
                 }
-                // Next is outside the window; keep it for next iteration
-                nextMessage = next;
+
+                // The candidateMessage is now outside the window; keep it for next iteration
+                firstMessageAfterWindow = candidateMessage;
                 break;
             }
-            return nextMessage;
+
+            return (messageToForward, firstMessageAfterWindow);
         }
-        private async Task ProcessMessageSafelyAsync(ForwardingMessage message)
-        {
-            try
-            {
-                await _processMessageAsync(message, _stopToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[{Name}] Error or stop while processing debounced message.", _name);
-                try
-                {
-                    _ignoreMessageAsync(message);
-                }
-                catch
-                {
-                    // Ignored
-                }
-            }
-        }
+
         private async Task RunAsync()
         {
             var reader = _queue.Reader;
-            ForwardingMessage? nextMessage = null;
+            ForwardingMessage? firstMessageAfterWindow = null;
             try
             {
                 while (!_stopToken.IsCancellationRequested)
                 {
-                    var currentMessage = await GetNextMessageAsync(nextMessage, reader, _stopToken);
-                    if (currentMessage == null)
+                    ForwardingMessage firstMessageInWindow;
+                    if (firstMessageAfterWindow != null)
                     {
-                        break; // Exit the loop if cancellation is requested
+                        firstMessageInWindow = firstMessageAfterWindow;
                     }
-                    // Process messages within the debounce window
-                    nextMessage = ProcessDebounceWindow(currentMessage, reader);
+                    else
+                    {
+                        try
+                        {
+                            firstMessageInWindow = await reader.ReadAsync(_stopToken);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            break; // Exit the loop if cancellation is requested
+                        }
+                    }
+
+                    (var messageToForward, firstMessageAfterWindow) =
+                        ChooseMessageToForward(firstMessageInWindow, reader);
+
                     // Process the chosen latest message
-                    await ProcessMessageSafelyAsync(currentMessage);
+                    try
+                    {
+                        await _forwardMessageAsync(messageToForward, _stopToken);
+                    }
+                    catch
+                    {
+                        // Ignored
+                    }
                 }
             }
             catch (OperationCanceledException)
             {
-                // Gracefully exit on cancellation
+                // Just exit on cancellation
             }
         }
     }
