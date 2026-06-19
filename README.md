@@ -116,6 +116,7 @@ rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
     ```
 
 ## Changelog
+- 2026-06-18: Logging runtime version, build information and operating system details at startup
 - 2026-06-16: Debouncing of frequent volume-change PUT-requests 
 - 2026-06-03: Extra API service is used to start an Audio Repository API Codespace 
 - 2026-05-25: Initialized as alternative to RabbitMQ-to-REST-API-Farwarder
