@@ -88,8 +88,8 @@ public partial class KafkaConsumerService : BackgroundService
             BootstrapServers = _bootstrapServers,
             GroupId = _consumerGroupId,
             AutoOffsetReset = _autoOffsetReset,
-            EnableAutoCommit = false,
-            EnableAutoOffsetStore = false
+            EnableAutoCommit = true,           // let the background poller commit
+            EnableAutoOffsetStore = false      // we control which offsets are eligible
         };
 
         var deadLetterProducerConfig = new ProducerConfig
@@ -361,14 +361,13 @@ public partial class KafkaConsumerService : BackgroundService
         try
         {
             consumer.StoreOffset(consumeResult);
-            consumer.Commit(consumeResult);
             _logger.LogInformation(
-                "Kafka message commited on TopicPartitionOffset {TopicPartitionOffset}.",
+                "Kafka message offset stored for commit: {TopicPartitionOffset}.",
                 consumeResult.TopicPartitionOffset);
         }
         catch (KafkaException ex)
         {
-            _logger.LogError(ex, "Failed to commit Kafka offset {TopicPartitionOffset}",
+            _logger.LogError(ex, "Failed to store Kafka offset: {TopicPartitionOffset}",
                 consumeResult.TopicPartitionOffset);
             throw;
         }
