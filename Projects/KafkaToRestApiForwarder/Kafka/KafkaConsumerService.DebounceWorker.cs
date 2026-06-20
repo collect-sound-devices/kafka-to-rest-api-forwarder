@@ -5,8 +5,8 @@ namespace KafkaToRestApiForwarder.Kafka;
 
 public partial class KafkaConsumerService
 {
-    private DebounceWorker? _captureDebouncer;
-    private DebounceWorker? _renderDebouncer;
+    private DebounceWorker<ForwardingMessage>? _captureDebouncer;
+    private DebounceWorker<ForwardingMessage>? _renderDebouncer;
     private TimeSpan _volumeDebounceWindow;
 
 
@@ -28,11 +28,11 @@ public partial class KafkaConsumerService
     }
 
 
-    private DebounceWorker CreateDebouncer(string eventName, IConsumer<string, string> consumer,
+    private DebounceWorker<ForwardingMessage> CreateDebouncer(string eventName, IConsumer<string, string> consumer,
         IProducer<string, string> deadLetterProducer,
         CancellationToken cancellationToken)
     {
-        return new DebounceWorker(_volumeDebounceWindow,
+        return new DebounceWorker<ForwardingMessage>(_volumeDebounceWindow,
             (message, ct) => ForwardDebouncedMessageAsync(eventName, consumer, deadLetterProducer, message, ct),
             (message, ct) => IgnoreDebouncedMessageAsync(eventName, consumer, message),
             cancellationToken);
@@ -57,22 +57,22 @@ public partial class KafkaConsumerService
         return Task.CompletedTask;
     }
 
-    private sealed class DebounceWorker
+    private sealed class DebounceWorker<TMessage> where TMessage : class, IHasUpdateDate
     {
         private readonly TimeSpan _debounceWindow;
-        private readonly Func<ForwardingMessage, CancellationToken, Task> _forwardMessageAsync;
-        private readonly Func<ForwardingMessage, CancellationToken, Task> _ignoreMessageAsync;
+        private readonly Func<TMessage, CancellationToken, Task> _forwardMessageAsync;
+        private readonly Func<TMessage, CancellationToken, Task> _ignoreMessageAsync;
 
-        private readonly Channel<ForwardingMessage> _queue =
-            Channel.CreateUnbounded<ForwardingMessage>(new UnboundedChannelOptions
+        private readonly Channel<TMessage> _queue =
+            Channel.CreateUnbounded<TMessage>(new UnboundedChannelOptions
             { SingleReader = true, SingleWriter = false });
 
         private readonly CancellationToken _stopToken;
         private readonly Task _workerTask;
 
         public DebounceWorker(TimeSpan window,
-            Func<ForwardingMessage, CancellationToken, Task> forwardMessageAsync,
-            Func<ForwardingMessage, CancellationToken, Task> ignoreMessageAsync,
+            Func<TMessage, CancellationToken, Task> forwardMessageAsync,
+            Func<TMessage, CancellationToken, Task> ignoreMessageAsync,
             CancellationToken stopToken)
         {
             _debounceWindow = window;
@@ -87,17 +87,17 @@ public partial class KafkaConsumerService
             _workerTask.Wait(CancellationToken.None);
         }
 
-        public ValueTask EnqueueAsync(ForwardingMessage message)
+        public ValueTask EnqueueAsync(TMessage message)
         {
             return _queue.Writer.WriteAsync(message, _stopToken);
         }
 
-        private async Task<(ForwardingMessage messageToForward, ForwardingMessage? firstMessageAfterWindow)> ChooseMessageToForwardAsync(
-            ForwardingMessage firstMessageInWindow,
-            ChannelReader<ForwardingMessage> reader)
+        private async Task<(TMessage messageToForward, TMessage? firstMessageAfterWindow)> ChooseMessageToForwardAsync(
+            TMessage firstMessageInWindow,
+            ChannelReader<TMessage> reader)
         {
             var messageToForward = firstMessageInWindow;
-            ForwardingMessage? firstMessageAfterWindow = null;
+            TMessage? firstMessageAfterWindow = null;
             while (reader.TryRead(out var candidateMessage))
             {
                 if ((candidateMessage.UpdateDate - messageToForward.UpdateDate) <= _debounceWindow) // within the time window?
@@ -127,12 +127,12 @@ public partial class KafkaConsumerService
         private async Task RunAsync()
         {
             var reader = _queue.Reader;
-            ForwardingMessage? firstMessageAfterWindow = null;
+            TMessage? firstMessageAfterWindow = null;
             try
             {
                 while (!_stopToken.IsCancellationRequested)
                 {
-                    ForwardingMessage firstMessageInWindow;
+                    TMessage firstMessageInWindow;
                     if (firstMessageAfterWindow != null)
                     {
                         firstMessageInWindow = firstMessageAfterWindow;

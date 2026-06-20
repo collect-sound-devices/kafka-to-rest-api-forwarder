@@ -10,4 +10,4 @@ public sealed record ForwardingMessage(
     DeviceEventType DeviceEventType,
     DateTime UpdateDate,
     JsonObject Payload,
-    ConsumeResult<string, string> ConsumeResult);
+    ConsumeResult<string, string> ConsumeResult) : IHasUpdateDate;
