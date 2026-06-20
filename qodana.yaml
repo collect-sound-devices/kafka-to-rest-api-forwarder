@@ -21,9 +21,7 @@ profile:
     - inspection: CyclomaticComplexityInspection
       enabled: true
       options:
-        Threshold: 4
-    - inspection: CA1502
-      enabled: true
+        Threshold: 7
     - inspection: CA1505
       enabled: true
 

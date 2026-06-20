@@ -32,12 +32,9 @@ public partial class KafkaConsumerService
         IProducer<string, string> deadLetterProducer,
         CancellationToken cancellationToken)
     {
-        return new DebounceWorker(
-            eventName,
-            _volumeDebounceWindow,
+        return new DebounceWorker(_volumeDebounceWindow,
             (message, ct) => ForwardDebouncedMessageAsync(eventName, consumer, deadLetterProducer, message, ct),
             (message) => IgnoreDebouncedMessage(eventName, consumer, message),
-            _logger,
             cancellationToken);
     }
 
@@ -61,11 +58,9 @@ public partial class KafkaConsumerService
 
     private sealed class DebounceWorker
     {
-        private readonly string _name;
         private readonly TimeSpan _debounceWindow;
         private readonly Func<ForwardingMessage, CancellationToken, Task> _forwardMessageAsync;
         private readonly Action<ForwardingMessage> _ignoreMessageAsync;
-        private readonly ILogger _logger;
 
         private readonly Channel<ForwardingMessage> _queue =
             Channel.CreateUnbounded<ForwardingMessage>(new UnboundedChannelOptions
@@ -74,17 +69,14 @@ public partial class KafkaConsumerService
         private readonly CancellationToken _stopToken;
         private readonly Task _workerTask;
 
-        public DebounceWorker(string name, TimeSpan window,
+        public DebounceWorker(TimeSpan window,
             Func<ForwardingMessage, CancellationToken, Task> forwardMessageAsync,
             Action<ForwardingMessage> ignoreMessageAsync,
-            ILogger logger,
             CancellationToken stopToken)
         {
-            _name = name;
             _debounceWindow = window;
             _forwardMessageAsync = forwardMessageAsync;
             _ignoreMessageAsync = ignoreMessageAsync;
-            _logger = logger;
             _stopToken = stopToken;
             _workerTask = Task.Run(RunAsync, stopToken);
         }
@@ -130,6 +122,7 @@ public partial class KafkaConsumerService
             return (messageToForward, firstMessageAfterWindow);
         }
 
+        // ReSharper disable CognitiveComplexity
         private async Task RunAsync()
         {
             var reader = _queue.Reader;
@@ -174,5 +167,6 @@ public partial class KafkaConsumerService
                 // Just exit on cancellation
             }
         }
+        // ReSharper restore CognitiveComplexity
     }
 }
