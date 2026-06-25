@@ -76,6 +76,61 @@ rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
   * See settings: `Kafka:MessageDelivery:RetryDelayInSeconds`, `Kafka:MessageDelivery:MaxRetryAttempts`, `Kafka:Consumer:DeadLetterTopic`.
 
 
+## Message Forwarding Pattern & Debouncing
+
+KafkaToRestApiForwarder implements a message forwarding pattern that includes debouncing
+for frequent volume change events and reliable delivery with retries and a dead-letter topic.
+
+<div style="zoom: 0.5;">
+
+```mermaid
+flowchart BT
+
+classDef invisibleNode fill:transparent,stroke:transparent;
+classDef dottedBox fill:transparent,fill-opacity:0.55, stroke-dasharray:20 5,stroke-width:2px;
+
+subgraph scannerService["win-sound-scanner-go or linux-sound-scanner"]
+    invisible1["<br><br><br><br><br>"]
+    class invisible1 invisibleNode
+    A["WinSoundScanner<br>(Windows Service) or<br>LinuxSoundScanner<br>(Docker Container)"]
+    invisible2["<br><br><br><br><br>"]
+    class invisible2 invisibleNode
+end
+class scannerService dottedBox
+
+
+subgraph forwarder["KafkaToRestApiForwarder"]
+    invisible3["<br><br><br><br><br>"]
+    class invisible3 invisibleNode
+    B["Event Queue<br>(Kafka topic)"]
+    C["KafkaConsumerService<br>(BackgroundService)"]
+    D["DebounceWorker<br>(render/capture workers)"]
+    F["TryForwardOrPublishToDeadLetterAsync<br>(commit / retry / dead-letter)"]
+    E["ForwardAsync"]
+    G["ForwardWithRetriesAsync<br>(delayed retry attempts)"]
+    H["Dead-letter Topic<br>(.failed)"]
+    invisible4["<br><br><br><br><br>"]
+    class invisible4 invisibleNode
+end
+class forwarder dottedBox
+
+
+deviceRepositoryApi["Device Repository Server<br>(REST API)"]
+
+    A -->|"Publish Kafka events"| B
+    B -->|"Consume"| C
+    C -->|"Enqueue volume events"| D
+    C -->|"Process other events directly"| F
+    D -->|"winner event"| F
+    F -->|"POST / PUT attempt"| E
+    E -->|"HTTP request"| deviceRepositoryApi
+    F -->|"on failure<br>attempts remaining"| G
+    G -->|"delay expires<br>next attempt"| F
+    F -->|"max retries exceeded"| H
+```
+
+</div>
+
 ## Technologies Used
 
 - KafkaToRestApiForwarder:
