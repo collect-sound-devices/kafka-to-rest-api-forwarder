@@ -12,8 +12,6 @@ to the audio device repository REST API, see [AudioDeviceRepoServer](https://git
 
 Apache Kafka is the request transport between the scanners and this forwarder.
 
-<div style="zoom: 0.5;">
-
 ```mermaid
 flowchart BT
 
@@ -21,28 +19,46 @@ classDef dottedBox fill:transparent, fill-opacity:0.55, stroke-dasharray:10 8, s
 classDef stressedBox fill:#f0f0f0,fill-opacity:0.2,stroke-width:4px;
 classDef invisibleNode fill:transparent, stroke:transparent;
 
-coreAudioApi["Core Audio<br>(Windows API) or<br>Pulse Lib<br>(Linux PulseAudio)"]
+coreAudioApi["Core Audio
+(Windows API) or
+Pulse Lib
+(Linux PulseAudio)"]
 
     class invisible1 invisibleNode
-    winSoundScannerService["WinSoundScanner<br>(Windows Service) or<br>LinuxSoundScanner<br>(Docker Container)"]
-    invisible2["<br><br><br><br><br>"]
+    winSoundScannerService["WinSoundScanner
+    (Windows Service) or
+    LinuxSoundScanner
+    (Docker Container)"]
+    invisible2["
+    
+    
+    
+    
+    "]
     class invisible2 invisibleNode
 
-subgraph eventTopicKafkaMicroservice["<br>"]
-    eventTopic[("Event Topic<br>(Kafka topic)")]
-    kafkaRestForwarder["KafkaToRestApiForwarder<br>(.NET microservice)"]
+subgraph eventTopicKafkaMicroservice["
+    "]
+    eventTopic[("Event Topic
+    (Kafka topic)")]
+    kafkaRestForwarder["KafkaToRestApiForwarder
+    (.NET microservice)"]
 end
 class eventTopicKafkaMicroservice stressedBox
     
-subgraph requestQueueRabbitMqMicroservice["<br>"]
-    requestQueue[("Request Queue<br>(RabbitMQ channel)")]
+subgraph requestQueueRabbitMqMicroservice["
+"]
+    requestQueue[("Request Queue
+    (RabbitMQ channel)")]
     class requestQueue dottedBox
-    rabbitMqRestForwarder["RmqToRestApiForwarder<br>(.NET microservice)"]
+    rabbitMqRestForwarder["RmqToRestApiForwarder
+    (.NET microservice)"]
     class rabbitMqRestForwarder dottedBox
 end
 class requestQueueRabbitMqMicroservice dottedBox
 
-deviceRepositoryApi["Device Repository Server<br>(REST API)"]
+deviceRepositoryApi["Device Repository Server
+(REST API)"]
 
 winSoundScannerService --> |Access device| coreAudioApi
 coreAudioApi --->|Device events| winSoundScannerService
@@ -57,9 +73,6 @@ requestQueue -->|Fetch messages| rabbitMqRestForwarder
 rabbitMqRestForwarder --> |Detect messages| requestQueue
 rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
 ```
-</div>
-
-
 
 ## Functions
 
@@ -81,8 +94,6 @@ rabbitMqRestForwarder -..->|POST/PUT requests| deviceRepositoryApi
 KafkaToRestApiForwarder implements a message forwarding pattern that includes debouncing
 for frequent volume change events and reliable delivery with retries and a dead-letter topic.
 
-<div style="zoom: 0.5;">
-
 ```mermaid
 flowchart BT
 
@@ -90,46 +101,75 @@ classDef invisibleNode fill:transparent,stroke:transparent;
 classDef dottedBox fill:transparent,fill-opacity:0.55, stroke-dasharray:20 5,stroke-width:2px;
 
 subgraph scannerService["win-sound-scanner-go or linux-sound-scanner"]
-    invisible1["<br><br><br><br><br>"]
+    invisible1["
+    
+    
+    
+    
+    "]
     class invisible1 invisibleNode
-    A["WinSoundScanner<br>(Windows Service) or<br>LinuxSoundScanner<br>(Docker Container)"]
-    invisible2["<br><br><br><br><br>"]
+    A["WinSoundScanner
+    (Windows Service) or
+    LinuxSoundScanner
+    (Docker Container)"]
+    invisible2["
+    
+    
+    
+    
+    "]
     class invisible2 invisibleNode
 end
 class scannerService dottedBox
 
 
 subgraph forwarder["KafkaToRestApiForwarder"]
-    invisible3["<br><br><br><br><br>"]
+    invisible3["
+    
+    
+    
+    
+    "]
     class invisible3 invisibleNode
-    B["Event Queue<br>(Kafka topic)"]
-    C["KafkaConsumerService<br>(BackgroundService)"]
-    D["DebounceWorker<br>(render/capture workers)"]
-    F["TryForwardOrPublishToDeadLetterAsync<br>(commit / retry / dead-letter)"]
+    B["Event Queue
+    (Kafka topic)"]
+    C["KafkaConsumerService
+    (BackgroundService)"]
+    D["DebounceWorker
+    (render/capture workers)"]
+    F["TryForwardOrPublishToDeadLetterAsync
+    (commit / retry / dead-letter)"]
     E["ForwardAsync"]
-    G["ForwardWithRetriesAsync<br>(delayed retry attempts)"]
-    H["Dead-letter Topic<br>(.failed)"]
-    invisible4["<br><br><br><br><br>"]
+    G["ForwardWithRetriesAsync
+    (delayed retry attempts)"]
+    H["Dead-letter Topic
+    (.failed)"]
+    invisible4["
+    
+    
+    
+    
+    "]
     class invisible4 invisibleNode
 end
 class forwarder dottedBox
 
 
-deviceRepositoryApi["Device Repository Server<br>(REST API)"]
+deviceRepositoryApi["Device Repository Server
+(REST API)"]
 
-    A -->|"Publish Kafka events"| B
-    B -->|"Consume"| C
-    C -->|"Enqueue volume events"| D
-    C -->|"Process other events directly"| F
-    D -->|"winner event"| F
-    F -->|"POST / PUT attempt"| E
-    E -->|"HTTP request"| deviceRepositoryApi
-    F -->|"on failure<br>attempts remaining"| G
-    G -->|"delay expires<br>next attempt"| F
-    F -->|"max retries exceeded"| H
+A -->|"Publish Kafka events"| B
+B -->|"Consume"| C
+C -->|"Enqueue volume events"| D
+C -->|"Process other events directly"| F
+D -->|"winner event"| F
+F -->|"POST / PUT attempt"| E
+E -->|"HTTP request"| deviceRepositoryApi
+F -->|"on failure<br>attempts remaining"| G
+G -->|"delay expires<br>next attempt"| F
+F -->|"max retries exceeded"| H
+
 ```
-
-</div>
 
 ## Technologies Used
 
