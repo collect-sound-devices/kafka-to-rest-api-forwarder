@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using static KafkaToRestApiForwarder.Contracts.MessagePayloadFields;
 
 namespace KafkaToRestApiForwarder.Kafka;
 

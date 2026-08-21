@@ -34,7 +34,7 @@ public partial class KafkaConsumerService
     {
         return new DebounceWorker<ForwardingMessage>(_volumeDebounceWindow,
             (message, ct) => ForwardDebouncedMessageAsync(eventName, consumer, deadLetterProducer, message, ct),
-            (message, ct) => IgnoreDebouncedMessageAsync(eventName, consumer, message),
+            (message, _) => IgnoreDebouncedMessageAsync(eventName, consumer, message),
             cancellationToken);
     }
 
