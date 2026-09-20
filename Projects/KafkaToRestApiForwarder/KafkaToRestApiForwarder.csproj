@@ -15,12 +15,12 @@
 
     <ItemGroup>
         <AdditionalFiles Include="CodeMetricsConfig.txt" />
-        <PackageReference Include="Confluent.Kafka" Version="2.15.0" />
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
-        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
-        <PackageReference Include="NLog.Extensions.Logging" Version="6.2.0" />
-        <PackageReference Include="NLog.Targets.GZipFile" Version="6.2.0" />
-        <PackageReference Include="System.IO.Hashing" Version="10.0.11" />
+        <PackageReference Include="Confluent.Kafka" Version="2.15.1" />
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
+        <PackageReference Include="NLog.Extensions.Logging" Version="6.2.1" />
+        <PackageReference Include="NLog.Targets.GZipFile" Version="6.2.1" />
+        <PackageReference Include="System.IO.Hashing" Version="10.0.12" />
     </ItemGroup>
 
   <UsingTask TaskName="RegexReplaceInFile" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
